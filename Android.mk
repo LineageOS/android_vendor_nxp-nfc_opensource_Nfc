@@ -1,3 +1,4 @@
+ifeq ($(strip $(TARGET_USES_NQ_NFC)),true)
 LOCAL_PATH:= $(call my-dir)
 
 ########################################
@@ -13,13 +14,17 @@ LOCAL_SRC_FILES := \
 LOCAL_SRC_FILES += \
         $(call all-java-files-under, nci)
 
-LOCAL_PACKAGE_NAME := NfcNci
+LOCAL_PACKAGE_NAME := NQNfcNci
 LOCAL_CERTIFICATE := platform
 
-LOCAL_JNI_SHARED_LIBRARIES := libnfc_nci_jni
-
+LOCAL_JNI_SHARED_LIBRARIES := libnqnfc_nci_jni
+LOCAL_JAVA_LIBRARIES := com.nxp.nfc.nq
 LOCAL_PROGUARD_ENABLED := disabled
+
+LOCAL_PROPRIETARY_MODULE := true
+LOCAL_MODULE_OWNER := nxp
 
 include $(BUILD_PACKAGE)
 
 include $(call all-makefiles-under,$(LOCAL_PATH))
+endif

@@ -1,4 +1,4 @@
-VOB_COMPONENTS := external/libnfc-nci/src
+VOB_COMPONENTS := vendor/nxp/opensource/external/libnfc-nci/src
 NFA := $(VOB_COMPONENTS)/nfa
 NFC := $(VOB_COMPONENTS)/nfc
 
@@ -106,7 +106,7 @@ LOCAL_C_INCLUDES += \
     $(VOB_COMPONENTS)/gki/common
 
 ifeq ($(NFC_NXP_ESE),TRUE)
-LOCAL_C_INCLUDES +=external/p61-jcop-kit/include
+LOCAL_C_INCLUDES += vendor/nxp/proprietary/external/p61-jcop-kit/include
 
 endif
 
@@ -116,7 +116,7 @@ LOCAL_SHARED_LIBRARIES := \
     libcutils \
     libutils \
     liblog \
-    libnfc-nci
+    libnqnfc-nci
 
 ifeq ($(NFC_NXP_ESE),TRUE)
 LOCAL_SHARED_LIBRARIES += libp61-jcop-kit
@@ -124,7 +124,9 @@ endif
 
 #LOCAL_STATIC_LIBRARIES := libxml2
 
-LOCAL_MODULE := libnfc_nci_jni
+LOCAL_MODULE := libnqnfc_nci_jni
 LOCAL_MODULE_TAGS := optional
+LOCAL_PROPRIETARY_MODULE := true
+LOCAL_MODULE_OWNER := nxp
 
 include $(BUILD_SHARED_LIBRARY)

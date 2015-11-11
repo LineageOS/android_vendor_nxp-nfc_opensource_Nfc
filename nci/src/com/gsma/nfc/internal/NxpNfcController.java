@@ -1,18 +1,21 @@
 /*
-* Copyright (C) 2015 NXP Semiconductors
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*      http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
+ * Copyright (C) 2015 NXP Semiconductors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.gsma.nfc.internal;
 
 import android.content.Context;
@@ -28,7 +31,7 @@ import android.util.Log;
 import com.nxp.nfc.gsma.internal.INxpNfcController;
 import com.android.nfc.cardemulation.CardEmulationManager;
 import com.android.nfc.cardemulation.RegisteredAidCache;
-import android.nfc.cardemulation.ApduServiceInfo;
+import android.nfc.cardemulation.NQApduServiceInfo;
 import android.os.Binder;
 import android.content.ComponentName;
 
@@ -183,24 +186,24 @@ public class NxpNfcController {
     final class NxpNfcControllerInterface extends INxpNfcController.Stub {
 
         @Override
-        public boolean deleteOffHostService(int userId, String packageName, ApduServiceInfo service) {
+        public boolean deleteOffHostService(int userId, String packageName, NQApduServiceInfo service) {
             return mServiceCache.deleteApduService(userId, Binder.getCallingUid(), packageName, service);
         }
 
         @Override
-        public ArrayList<ApduServiceInfo> getOffHostServices(int userId, String packageName) {
+        public ArrayList<NQApduServiceInfo> getOffHostServices(int userId, String packageName) {
             return mServiceCache.getApduServices(userId, Binder.getCallingUid(), packageName);
         }
 
         @Override
-        public ApduServiceInfo getDefaultOffHostService(int userId, String packageName) {
-            HashMap<ComponentName, ApduServiceInfo> mapServices = mServiceCache.getApduservicesMaps();
+        public NQApduServiceInfo getDefaultOffHostService(int userId, String packageName) {
+            HashMap<ComponentName, NQApduServiceInfo> mapServices = mServiceCache.getApduservicesMaps();
             ComponentName preferredPaymentService = mRegisteredAidCache.getPreferredPaymentService();
             if(preferredPaymentService != null) {
                 String defaultservice = preferredPaymentService.getClassName();
 
                 //If Default is Dynamic Service
-                for (Map.Entry<ComponentName, ApduServiceInfo> entry : mapServices.entrySet())
+                for (Map.Entry<ComponentName, NQApduServiceInfo> entry : mapServices.entrySet())
                 {
                     if(defaultservice.equals(entry.getKey().getClassName())) {
                         Log.d(TAG, "getDefaultOffHostService: Dynamic: "+ entry.getValue().getAids().size());
@@ -209,8 +212,8 @@ public class NxpNfcController {
                 }
 
                 //If Default is Static Service
-                HashMap<ComponentName, ApduServiceInfo>  staticServices = mServiceCache.getInstalledStaticServices();
-                for (Map.Entry<ComponentName, ApduServiceInfo> entry : staticServices.entrySet()) {
+                HashMap<ComponentName, NQApduServiceInfo>  staticServices = mServiceCache.getInstalledStaticServices();
+                for (Map.Entry<ComponentName, NQApduServiceInfo> entry : staticServices.entrySet()) {
                     if(defaultservice.equals(entry.getKey().getClassName())) {
                         Log.d(TAG, "getDefaultOffHostService: Static: "+ entry.getValue().getAids().size());
                         return entry.getValue();
@@ -221,7 +224,7 @@ public class NxpNfcController {
         }
 
         @Override
-        public boolean commitOffHostService(int userId, String packageName, String serviceName, ApduServiceInfo service) {
+        public boolean commitOffHostService(int userId, String packageName, String serviceName, NQApduServiceInfo service) {
             int aidLength = 0;
             boolean is_table_size_required = true;
             List<String>  newAidList = new ArrayList<String>();
@@ -232,7 +235,7 @@ public class NxpNfcController {
             }
             Log.d(TAG, "Total commiting aids Length:  "+ aidLength);
 
-            ArrayList<ApduServiceInfo> serviceList = mServiceCache.getApduServices(userId, Binder.getCallingUid(), packageName);
+            ArrayList<NQApduServiceInfo> serviceList = mServiceCache.getApduServices(userId, Binder.getCallingUid(), packageName);
            for(int i=0; i< serviceList.size(); i++) {
                 Log.d(TAG, "All Service Names["+i +"] "+ serviceList.get(i).getComponent().getClassName());
                 if(serviceName.equalsIgnoreCase(serviceList.get(i).getComponent().getClassName())) {

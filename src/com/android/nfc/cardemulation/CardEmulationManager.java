@@ -1,4 +1,9 @@
 /*
+ * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
+ * Copyright (C) 2015 NXP Semiconductors
+ * The original Work has been changed by NXP Semiconductors.
  * Copyright (C) 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,25 +18,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/******************************************************************************
- *
- *  The original Work has been changed by NXP Semiconductors.
- *
- *  Copyright (C) 2015 NXP Semiconductors
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
- ******************************************************************************/
 package com.android.nfc.cardemulation;
 
 import java.io.FileDescriptor;
@@ -46,6 +32,7 @@ import android.content.Intent;
 import android.nfc.INfcCardEmulation;
 import android.nfc.cardemulation.AidGroup;
 import android.nfc.cardemulation.ApduServiceInfo;
+import android.nfc.cardemulation.NQApduServiceInfo;
 import android.nfc.cardemulation.CardEmulation;
 import android.os.Binder;
 import android.os.RemoteException;
@@ -149,7 +136,7 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
     }
 
     @Override
-    public void onServicesUpdated(int userId, List<ApduServiceInfo> services) {
+    public void onServicesUpdated(int userId, List<NQApduServiceInfo> services) {
         // Verify defaults are still sane
         verifyDefaults(userId, services);
         // Update the AID cache
@@ -160,13 +147,13 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
         mNfcid2Cache.onServicesUpdated(userId, services);
     }
 
-    void verifyDefaults(int userId, List<ApduServiceInfo> services) {
+    void verifyDefaults(int userId, List<NQApduServiceInfo> services) {
         ComponentName defaultPaymentService =
                 getDefaultServiceForCategory(userId, CardEmulation.CATEGORY_PAYMENT, false);
         if (DBG) Log.d(TAG, "Current default: " + defaultPaymentService);
         if (defaultPaymentService != null) {
             // Validate the default is still installed and handling payment
-            ApduServiceInfo serviceInfo = mServiceCache.getService(userId, defaultPaymentService);
+            NQApduServiceInfo serviceInfo = mServiceCache.getService(userId, defaultPaymentService);
             if (serviceInfo == null || !serviceInfo.hasCategory(CardEmulation.CATEGORY_PAYMENT)) {
                 if (serviceInfo == null) {
                     Log.e(TAG, "Default payment service unexpectedly removed.");
@@ -175,7 +162,7 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
                 }
                 int numPaymentServices = 0;
                 ComponentName lastFoundPaymentService = null;
-                for (ApduServiceInfo service : services) {
+                for (NQApduServiceInfo service : services) {
                     if (service.hasCategory(CardEmulation.CATEGORY_PAYMENT))  {
                         numPaymentServices++;
                         lastFoundPaymentService = service.getComponent();
@@ -211,7 +198,7 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
             // in that case, automatically set that app as default.
             int numPaymentServices = 0;
             ComponentName lastFoundPaymentService = null;
-            for (ApduServiceInfo service : services) {
+            for (NQApduServiceInfo service : services) {
                 if (service.hasCategory(CardEmulation.CATEGORY_PAYMENT))  {
                     numPaymentServices++;
                     lastFoundPaymentService = service.getComponent();
@@ -393,7 +380,12 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
                 throws RemoteException {
             NfcPermissions.validateUserId(userId);
             NfcPermissions.enforceAdminPermissions(mContext);
-            return mServiceCache.getServicesForCategory(userId, category);
+            List<NQApduServiceInfo> nxpapdu = mServiceCache.getServicesForCategory(userId, category);
+            ArrayList<ApduServiceInfo> apdu = new ArrayList<ApduServiceInfo>();
+            for(ApduServiceInfo l : apdu) {
+                apdu.add(l);
+            }
+            return apdu;
         }
 
         @Override
@@ -445,14 +437,14 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
         if(category == CardEmulation.CATEGORY_PAYMENT) {
             return null;
         }
-        List<ApduServiceInfo> nonPaymentServices = new ArrayList<ApduServiceInfo>();
+        List<NQApduServiceInfo> nonPaymentServices = new ArrayList<NQApduServiceInfo>();
         Map<String , Integer> nonPaymentServiceAidCacheSize= new HashMap<String , Integer>();
         Integer serviceAidCacheSize = 0x00;
         String serviceComponent = null;
         NfcPermissions.validateUserId(userId);
         NfcPermissions.enforceUserPermissions(mContext);
         nonPaymentServices = mServiceCache.getServicesForCategory(userId, CardEmulation.CATEGORY_OTHER);
-        for(ApduServiceInfo serviceinfo : nonPaymentServices) {
+        for(NQApduServiceInfo serviceinfo : nonPaymentServices) {
             serviceAidCacheSize = 0x00;
             serviceComponent = null;
             if(serviceinfo != null) {

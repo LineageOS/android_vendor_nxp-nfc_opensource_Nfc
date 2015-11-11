@@ -1,4 +1,9 @@
- /*
+/*
+ * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
+ * Copyright (C) 2015 NXP Semiconductors
+ * The original Work has been changed by NXP Semiconductors.
  * Copyright (C) 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,25 +18,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/******************************************************************************
- *
- *  The original Work has been changed by NXP Semiconductors.
- *
- *  Copyright (C) 2015 NXP Semiconductors
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
- ******************************************************************************/
 
 package com.android.nfc.cardemulation;
 
@@ -39,7 +25,7 @@ import android.app.ActivityManager;
 import android.content.ComponentName;
 import android.content.Context;
 import com.android.nfc.NfcService;
-import android.nfc.cardemulation.ApduServiceInfo;
+import android.nfc.cardemulation.NQApduServiceInfo;
 import android.nfc.cardemulation.CardEmulation;
 import android.util.Log;
 
@@ -86,7 +72,7 @@ public class RegisteredAidCache {
 
     // Represents a single AID registration of a service
     final class ServiceAidInfo {
-        ApduServiceInfo service;
+        NQApduServiceInfo service;
         String aid;
         String category;
 
@@ -125,8 +111,8 @@ public class RegisteredAidCache {
     // Represents a list of services, an optional default and a category that
     // an AID was resolved to.
     final class AidResolveInfo {
-        List<ApduServiceInfo> services = new ArrayList<ApduServiceInfo>();
-        ApduServiceInfo defaultService = null;
+        List<NQApduServiceInfo> services = new ArrayList<NQApduServiceInfo>();
+        NQApduServiceInfo defaultService = null;
         String category = null;
         boolean mustRoute = true; // Whether this AID should be routed at all
 
@@ -205,7 +191,7 @@ public class RegisteredAidCache {
                             resolveInfo.defaultService = entryResolveInfo.defaultService;
                             resolveInfo.category = entryResolveInfo.category;
                         }
-                        for (ApduServiceInfo serviceInfo : entryResolveInfo.services) {
+                        for (NQApduServiceInfo serviceInfo : entryResolveInfo.services) {
                             if (!resolveInfo.services.contains(serviceInfo)) {
                                 resolveInfo.services.add(serviceInfo);
                             }
@@ -266,8 +252,8 @@ public class RegisteredAidCache {
         AidResolveInfo resolveInfo = new AidResolveInfo();
         resolveInfo.category = CardEmulation.CATEGORY_OTHER;
 
-        ApduServiceInfo matchedForeground = null;
-        ApduServiceInfo matchedPayment = null;
+        NQApduServiceInfo matchedForeground = null;
+        NQApduServiceInfo matchedPayment = null;
         for (ServiceAidInfo serviceAidInfo : conflictingServices) {
             boolean serviceClaimsPaymentAid =
                     CardEmulation.CATEGORY_PAYMENT.equals(serviceAidInfo.category);
@@ -390,10 +376,10 @@ public class RegisteredAidCache {
         }
     }
 
-    void generateServiceMapLocked(List<ApduServiceInfo> services) {
+    void generateServiceMapLocked(List<NQApduServiceInfo> services) {
         // Easiest is to just build the entire tree again
         mAidServices.clear();
-        for (ApduServiceInfo service : services) {
+        for (NQApduServiceInfo service : services) {
             if (DBG) Log.d(TAG, "generateServiceMap component: " + service.getComponent());
             List<String> prefixAids = service.getPrefixAids();
             for (String aid : service.getAids()) {
@@ -587,7 +573,7 @@ public class RegisteredAidCache {
             } else if (resolveInfo.defaultService != null) {
                 // There is a default service set, route to where that service resides -
                 // either on the host (HCE) or on an SE.
-                ApduServiceInfo.ESeInfo seInfo = resolveInfo.defaultService.getSEInfo();
+                NQApduServiceInfo.ESeInfo seInfo = resolveInfo.defaultService.getSEInfo();
                 boolean isDefaultPayment = resolveInfo.defaultService.getComponent().equals(mPreferredPaymentService);
                 boolean isForeground = resolveInfo.defaultService.getComponent().equals(mPreferredForegroundService);
                 boolean isOnHost = resolveInfo.defaultService.isOnHost();
@@ -659,7 +645,7 @@ public class RegisteredAidCache {
         mRoutingManager.configureRouting(routingEntries);
     }
 
-    public void onServicesUpdated(int userId, List<ApduServiceInfo> services) {
+    public void onServicesUpdated(int userId, List<NQApduServiceInfo> services) {
         if (DBG) Log.d(TAG, "onServicesUpdated");
         synchronized (mLock) {
             if (ActivityManager.getCurrentUser() == userId) {
@@ -711,12 +697,12 @@ public class RegisteredAidCache {
     String dumpEntry(Map.Entry<String, AidResolveInfo> entry) {
         StringBuilder sb = new StringBuilder();
         String category = entry.getValue().category;
-        ApduServiceInfo defaultServiceInfo = entry.getValue().defaultService;
+        NQApduServiceInfo defaultServiceInfo = entry.getValue().defaultService;
         sb.append("    \"" + entry.getKey() + "\" (category: " + category + ")\n");
         ComponentName defaultComponent = defaultServiceInfo != null ?
                 defaultServiceInfo.getComponent() : null;
 
-        for (ApduServiceInfo serviceInfo : entry.getValue().services) {
+        for (NQApduServiceInfo serviceInfo : entry.getValue().services) {
             sb.append("        ");
             if (serviceInfo.getComponent().equals(defaultComponent)) {
                 sb.append("*DEFAULT* ");

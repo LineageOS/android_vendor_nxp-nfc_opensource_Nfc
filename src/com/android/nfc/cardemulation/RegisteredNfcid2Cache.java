@@ -1,4 +1,7 @@
 /*
+ * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
  * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,10 +25,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.database.ContentObserver;
 import android.net.Uri;
-import android.nfc.cardemulation.ApduServiceInfo;
+import android.nfc.cardemulation.NQApduServiceInfo;
 import android.nfc.cardemulation.CardEmulation;
-import android.nfc.cardemulation.ApduServiceInfo.Nfcid2Group;
-import android.nfc.cardemulation.ApduServiceInfo.ESeInfo;
+import android.nfc.cardemulation.NQApduServiceInfo.Nfcid2Group;
+import android.nfc.cardemulation.NQApduServiceInfo.ESeInfo;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.UserHandle;
@@ -53,8 +56,8 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
 
     // mAidServices is a tree that maps an AID to a list of handling services
     // on Android. It is only valid for the current user.
-    final TreeMap<String, ArrayList<ApduServiceInfo>> mNfcid2ToServices =
-            new TreeMap<String, ArrayList<ApduServiceInfo>>();
+    final TreeMap<String, ArrayList<NQApduServiceInfo>> mNfcid2ToServices =
+            new TreeMap<String, ArrayList<NQApduServiceInfo>>();
 
     // mNfcid2Cache is a lookup table for quickly mapping an AID to one or
     // more services. It differs from mAidServices in the sense that it
@@ -68,8 +71,8 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
             Maps.newHashMap();
 
     final class Nfcid2ResolveInfo {
-        List<ApduServiceInfo> services;
-        ApduServiceInfo defaultService;
+        List<NQApduServiceInfo> services;
+        NQApduServiceInfo defaultService;
         String nfcid2;
     }
 
@@ -90,7 +93,7 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
     ComponentName mNextTapComponent = null;
     boolean mIsResolvingConflict = false;
     boolean mNfcEnabled = false;
-    List<ApduServiceInfo> mServicesCache;
+    List<NQApduServiceInfo> mServicesCache;
 
     private final class SettingsObserver extends ContentObserver {
         public SettingsObserver(Handler handler) {
@@ -224,7 +227,7 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
         }
     }
 
-    public List<ApduServiceInfo> getServicesForCategory(int userId, String category) {
+    public List<NQApduServiceInfo> getServicesForCategory(int userId, String category) {
         return mServiceCache.getServicesForCategory(userId, category);
     }
 
@@ -248,14 +251,14 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
     /**
      * Resolves an NFCID2 to a set of services that can handle it.
      */
-     Nfcid2ResolveInfo resolveNfcid2Locked(List<ApduServiceInfo> resolvedServices, String nfcid2) {
+     Nfcid2ResolveInfo resolveNfcid2Locked(List<NQApduServiceInfo> resolvedServices, String nfcid2) {
         if (resolvedServices == null || resolvedServices.size() == 0) {
             if (DBG) Log.d(TAG, "Could not resolve NFCID2 " + nfcid2 + " to any service.");
             return null;
         }
         Nfcid2ResolveInfo resolveInfo = new Nfcid2ResolveInfo();
         if (DBG) Log.d(TAG, "resolveNfcid2Locked: resolving AID " + nfcid2);
-        resolveInfo.services = new ArrayList<ApduServiceInfo>();
+        resolveInfo.services = new ArrayList<NQApduServiceInfo>();
         resolveInfo.services.addAll(resolvedServices);
         resolveInfo.defaultService = null;
 
@@ -268,7 +271,7 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
             if (DBG) Log.d(TAG, "resolveNfcid2Locked: default payment component is "
                     + defaultComponent);
             if (resolvedServices.size() == 1) {
-                ApduServiceInfo resolvedService = resolvedServices.get(0);
+                NQApduServiceInfo resolvedService = resolvedServices.get(0);
                 if (DBG) Log.d(TAG, "resolveNfcid2Locked: resolved single service " +
                         resolvedService.getComponent());
 
@@ -296,7 +299,7 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
                         if (nfcid2Group.getCategory().equals(CardEmulation.CATEGORY_PAYMENT)) {
                             for (String registeredNfcid2 : nfcid2Group.getNfcid2s()) {
 
-                                ArrayList<ApduServiceInfo> servicesForNfcid2 =
+                                ArrayList<NQApduServiceInfo> servicesForNfcid2 =
                                         mNfcid2ToServices.get(registeredNfcid2);
 
                                 if (servicesForNfcid2 != null && servicesForNfcid2.size() > 1) {
@@ -323,7 +326,7 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
                 // registered this AID, go with the default. Otherwise, add all.
                 if (DBG) Log.d(TAG, "resolveNfcid2Locked: multiple services matched.");
                 if (defaultComponent != null) {
-                    for (ApduServiceInfo service : resolvedServices) {
+                    for (NQApduServiceInfo service : resolvedServices) {
                         if (service.getComponent().equals(defaultComponent)) {
                             if (DBG) Log.d(TAG, "resolveNfcid2Locked: DECISION: routing to (default) "
                                     + service.getComponent());
@@ -339,7 +342,7 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
         } else {
             // This AID is not a payment AID, just return all components
             // that can handle it, but be mindful of (next tap) defaults.
-            for (ApduServiceInfo service : resolvedServices) {
+            for (NQApduServiceInfo service : resolvedServices) {
                 if (service.getComponent().equals(defaultComponent)) {
                     if (DBG) Log.d(TAG, "resolveAidLocked: DECISION: cat OTHER AID, " +
                             "routing to (default) " + service.getComponent());
@@ -368,20 +371,20 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
         return resolveInfo;
      }
 
-     void generateNfcid2TreeLocked(int userId, List<ApduServiceInfo> services) {
+     void generateNfcid2TreeLocked(int userId, List<NQApduServiceInfo> services) {
          // Easiest is to just build the entire tree again
          mNfcid2ToServices.clear();
-         for (ApduServiceInfo service : services) {
+         for (NQApduServiceInfo service : services) {
              if (DBG)Log.d(TAG,"generateAidTree component: " + service.getComponent());
              // Go through aid groups
              for (Nfcid2Group group : service.getNfcid2Groups()) {
                  for (String nfcid2 : group.getNfcid2s()) {
                      if (DBG) Log.d(TAG, "generateNFCID2Tree AID: " + nfcid2);
                      if (mNfcid2ToServices.containsKey(nfcid2)) {
-                         final ArrayList<ApduServiceInfo> nfcid2Services = mNfcid2ToServices.get(nfcid2);
+                         final ArrayList<NQApduServiceInfo> nfcid2Services = mNfcid2ToServices.get(nfcid2);
                          nfcid2Services.add(service);
                      } else {
-                         final ArrayList<ApduServiceInfo> nfcid2Services = new ArrayList<ApduServiceInfo>();
+                         final ArrayList<NQApduServiceInfo> nfcid2Services = new ArrayList<NQApduServiceInfo>();
                          nfcid2Services.add(service);
                          mNfcid2ToServices.put(nfcid2, nfcid2Services);
                      }
@@ -390,11 +393,11 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
          }
      }
 
-    void generateNfcid2CategoriesLocked(List<ApduServiceInfo> services) {
+    void generateNfcid2CategoriesLocked(List<NQApduServiceInfo> services) {
         // Trash existing mapping
         mCategoryNfcid2s.clear();
 
-        for (ApduServiceInfo service : services) {
+        for (NQApduServiceInfo service : services) {
             ArrayList<Nfcid2Group> nfcid2Groups = service.getNfcid2Groups();
             if (nfcid2Groups == null) continue;
             for (Nfcid2Group nfcid2Group : nfcid2Groups) {
@@ -411,7 +414,7 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
 
     void generateNfcid2CacheLocked() {
         mNfcid2Cache.clear();
-        for (Map.Entry<String, ArrayList<ApduServiceInfo>> nfcid2Entry:
+        for (Map.Entry<String, ArrayList<NQApduServiceInfo>> nfcid2Entry:
                     mNfcid2ToServices.entrySet()) {
             String nfcid2 = nfcid2Entry.getKey();
             if (!mNfcid2Cache.containsKey(nfcid2)) {
@@ -483,7 +486,7 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
     }
 
 //    @Override
-    public void onServicesUpdated(int userId, List<ApduServiceInfo> services) {
+    public void onServicesUpdated(int userId, List<NQApduServiceInfo> services) {
         Log.d(TAG, "onServicesUpdated");
         synchronized (mLock) {
             if (ActivityManager.getCurrentUser() == userId) {
@@ -531,11 +534,11 @@ public class RegisteredNfcid2Cache /*implements RegisteredServicesCache.Callback
     String dumpEntry(Map.Entry<String, Nfcid2ResolveInfo> entry) {
         StringBuilder sb = new StringBuilder();
         sb.append("    \"" + entry.getKey() + "\"\n");
-        ApduServiceInfo defaultService = entry.getValue().defaultService;
+        NQApduServiceInfo defaultService = entry.getValue().defaultService;
         ComponentName defaultComponent = defaultService != null ?
                 defaultService.getComponent() : null;
 
-        for (ApduServiceInfo service : entry.getValue().services) {
+        for (NQApduServiceInfo service : entry.getValue().services) {
             sb.append("        ");
             if (service.getComponent().equals(defaultComponent)) {
                 sb.append("*DEFAULT* ");

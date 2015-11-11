@@ -152,5 +152,9 @@
 
         <service android:name=".handover.PeripheralHandoverService"
         />
+
+        <uses-library android:name="com.nxp.nfc.nq"
+            android:required="true"
+        />
     </application>
 </manifest>
