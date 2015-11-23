@@ -20,9 +20,6 @@
 
 #include "DataQueue.h"
 
-#include <malloc.h>
-#include <string.h>
-
 #include <cutils/log.h>
 
 
@@ -157,4 +154,3 @@ bool DataQueue::dequeue (UINT8* buffer, UINT16 bufferMaxLen, UINT16& actualLen)
     mMutex.unlock ();
     return retval;
 }
-

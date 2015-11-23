@@ -13,7 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+/******************************************************************************
+ *
+ *  The original Work has been changed by NXP Semiconductors.
+ *
+ *  Copyright (C) 2015 NXP Semiconductors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
 package com.android.nfc.dhimpl;
 
 import android.annotation.Nullable;
@@ -132,9 +150,9 @@ public class NativeNfcTag implements TagEndpoint {
                 }
             }
 
-            synchronized (NativeNfcTag.this) {
+            //synchronized (NativeNfcTag.this) {
                 mIsPresent = false;
-            }
+            //}
             // Restart the polling loop
 
             Log.d(TAG, "Tag lost, restarting polling loop");
@@ -153,6 +171,7 @@ public class NativeNfcTag implements TagEndpoint {
         }
         int status = -1;
         for (int i = 0; i < mTechList.length; i++) {
+            Log.d(TAG,"connectWithStatus- technology ="+technology);
             if (mTechList[i] == technology) {
                 // Get the handle and connect, if not already connected
                 if (mConnectedHandle != mTechHandles[i]) {
@@ -188,7 +207,7 @@ public class NativeNfcTag implements TagEndpoint {
                         // special case for NDEF, this will cause switch to ISO_DEP frame intf
                         i = 0;
                        // status = 0;
-                    } 
+                    }
                     status = reconnectWithStatus(i);
                         /*
                         if ((technology != TagTechnology.ISO_DEP) &&
@@ -208,8 +227,8 @@ public class NativeNfcTag implements TagEndpoint {
                             status = 0;
                         }
                         */
-                    
-                    
+
+
                     if (status == 0) {
                         mConnectedTechIndex = i;
                         // Handle was already identical
@@ -715,6 +734,17 @@ public class NativeNfcTag implements TagEndpoint {
                         break;
                     }
 
+                    case TagTechnology.MIFARE_CLASSIC: {
+                        byte[] actBytes = mTechActBytes[i];
+                        if ((actBytes != null) && (actBytes.length > 0)) {
+                            extras.putShort(NfcA.EXTRA_SAK, (short) (actBytes[0] & (short) 0xFF));
+                        } else {
+                            // ignore this case.
+                        }
+                        extras.putByteArray(NfcA.EXTRA_ATQA, mTechPollBytes[i]);
+                        break;
+                    }
+
                     case TagTechnology.NFC_BARCODE: {
                         // hard code this for now, this is the only valid type
                         extras.putInt(NfcBarcode.EXTRA_BARCODE_TYPE, NfcBarcode.TYPE_KOVIO);
@@ -796,6 +826,7 @@ public class NativeNfcTag implements TagEndpoint {
                             getConnectedLibNfcType(),
                             getConnectedTechnology(),
                             supportedNdefLength, cardState);
+                    foundFormattable = false;
                     reconnect();
                 } catch (FormatException e) {
                    // Create an intent anyway, without NDEF messages
@@ -812,7 +843,6 @@ public class NativeNfcTag implements TagEndpoint {
                         getConnectedLibNfcType(),
                         getConnectedTechnology(),
                         supportedNdefLength, cardState);
-                foundFormattable = false;
                 reconnect();
             }
             break;

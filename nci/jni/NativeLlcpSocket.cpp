@@ -120,7 +120,7 @@ static jboolean nativeLlcpSocket_doSend (JNIEnv* e, jobject o, jbyteArray data)
     ScopedByteArrayRO bytes(e, data);
 
     PeerToPeer::tJNI_HANDLE jniHandle = (PeerToPeer::tJNI_HANDLE) nfc_jni_get_nfc_socket_handle(e, o);
-    UINT8* raw_ptr = const_cast<UINT8*>(reinterpret_cast<const UINT8*>(&bytes[0])); // TODO: API bug: send should take const*!
+    UINT8* raw_ptr = const_cast<UINT8*>(reinterpret_cast<const UINT8*>(&bytes[0]));
     bool stat = PeerToPeer::getInstance().send(jniHandle, raw_ptr, bytes.size());
 
     ALOGD_IF ((appl_trace_level>=BT_TRACE_LEVEL_DEBUG), "%s: exit", __FUNCTION__);

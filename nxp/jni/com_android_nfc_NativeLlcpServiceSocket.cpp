@@ -13,10 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/******************************************************************************
+ *
+ *  The original Work has been changed by NXP Semiconductors.
+ *
+ *  Copyright (C) 2015 NXP Semiconductors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
 
-#include <errno.h>
-#include <malloc.h>
 #include <semaphore.h>
+#include <errno.h>
 #include <ScopedLocalRef.h>
 
 #include "com_android_nfc.h"
@@ -38,8 +56,8 @@ static void nfc_jni_llcp_accept_socket_callback(void*        pContext,
    pCallbackData->status = status;
    sem_post(&pCallbackData->sem);
 }
- 
- 
+
+
 /*
  * Utils
  */
@@ -48,7 +66,7 @@ static phLibNfc_Handle getIncomingSocket(nfc_jni_native_monitor_t * pMonitor,
                                                  phLibNfc_Handle hServerSocket)
 {
    nfc_jni_listen_data_t * pListenData;
-   phLibNfc_Handle pIncomingSocket = (phLibNfc_Handle)NULL;
+   phLibNfc_Handle pIncomingSocket = NULL;
 
    /* Look for a pending incoming connection on the current server */
    LIST_FOREACH(pListenData, &pMonitor->incoming_socket_head, entries)
@@ -67,21 +85,19 @@ static phLibNfc_Handle getIncomingSocket(nfc_jni_native_monitor_t * pMonitor,
 
 /*
  * Methods
- */ 
+ */
 static jobject com_NativeLlcpServiceSocket_doAccept(JNIEnv *e, jobject o, jint miu, jint rw, jint linearBufferLength)
 {
    NFCSTATUS ret = NFCSTATUS_SUCCESS;
    struct timespec ts;
    phLibNfc_Llcp_sSocketOptions_t sOptions;
    phNfc_sData_t sWorkingBuffer;
-   jfieldID f;   
+   jfieldID f;
    ScopedLocalRef<jclass> clsNativeLlcpSocket(e, NULL);
    jobject clientSocket = NULL;
    struct nfc_jni_callback_data cb_data;
    phLibNfc_Handle hIncomingSocket, hServerSocket;
    nfc_jni_native_monitor_t * pMonitor = nfc_jni_get_monitor();
-
-   hIncomingSocket = (phLibNfc_Handle)NULL;
 
    /* Create the local semaphore */
    if (!nfc_cb_data_init(&cb_data, NULL))
@@ -95,7 +111,7 @@ static jobject com_NativeLlcpServiceSocket_doAccept(JNIEnv *e, jobject o, jint m
    /* Set socket options with the socket options of the service */
    sOptions.miu = miu;
    sOptions.rw = rw;
-   
+
    /* Allocate Working buffer length */
    sWorkingBuffer.buffer = (uint8_t*)malloc((miu*rw)+miu+linearBufferLength);
    sWorkingBuffer.length = (miu*rw)+ miu + linearBufferLength;
@@ -104,7 +120,7 @@ static jobject com_NativeLlcpServiceSocket_doAccept(JNIEnv *e, jobject o, jint m
    {
       /* Wait for tag Notification */
       pthread_mutex_lock(&pMonitor->incoming_socket_mutex);
-      while ((hIncomingSocket = getIncomingSocket(pMonitor, hServerSocket)) == (phLibNfc_Handle)NULL) {
+      while ((hIncomingSocket = getIncomingSocket(pMonitor, hServerSocket)) == NULL) {
          pthread_cond_wait(&pMonitor->incoming_socket_cond, &pMonitor->incoming_socket_mutex);
       }
       pthread_mutex_unlock(&pMonitor->incoming_socket_mutex);
@@ -215,7 +231,7 @@ static JNINativeMethod gMethods[] =
 {
    {"doAccept", "(III)Lcom/android/nfc/dhimpl/NativeLlcpSocket;",
       (void *)com_NativeLlcpServiceSocket_doAccept},
-      
+
    {"doClose", "()Z",
       (void *)com_NativeLlcpServiceSocket_doClose},
 };

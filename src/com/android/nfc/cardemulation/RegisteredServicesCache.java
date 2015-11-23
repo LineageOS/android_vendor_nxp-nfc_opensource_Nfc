@@ -30,6 +30,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
 import android.content.pm.PackageManager.NameNotFoundException;
+import android.net.Uri;
 import android.nfc.cardemulation.AidGroup;
 import android.nfc.cardemulation.ApduServiceInfo;
 import android.nfc.cardemulation.CardEmulation;
@@ -57,6 +58,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
+import com.gsma.nfc.internal.RegisteredNxpServicesCache;
 
 /**
  * This class is inspired by android.content.pm.RegisteredServicesCache
@@ -68,7 +70,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class RegisteredServicesCache {
     static final String XML_INDENT_OUTPUT_FEATURE = "http://xmlpull.org/v1/doc/features.html#indent-output";
     static final String TAG = "RegisteredServicesCache";
-    static final boolean DEBUG = false;
+    static final boolean DEBUG = true;
 
     final Context mContext;
     final AtomicReference<BroadcastReceiver> mReceiver;
@@ -80,6 +82,11 @@ public class RegisteredServicesCache {
     final SparseArray<UserServices> mUserServices = new SparseArray<UserServices>();
     final Callback mCallback;
     final AtomicFile mDynamicAidsFile;
+
+    //public ArrayList<ApduServiceInfo> mAllServices = new ArrayList<ApduServiceInfo>();
+    final HashMap<ComponentName, ApduServiceInfo> mAllServices = Maps.newHashMap();
+
+    private RegisteredNxpServicesCache mRegisteredNxpServicesCache;
 
     public interface Callback {
         void onServicesUpdated(int userId, final List<ApduServiceInfo> services);
@@ -129,6 +136,12 @@ public class RegisteredServicesCache {
                              Intent.ACTION_PACKAGE_REMOVED.equals(action));
                     if (!replaced) {
                         int currentUser = ActivityManager.getCurrentUser();
+                        if(Intent.ACTION_PACKAGE_REMOVED.equals(action)) {
+                            Uri uri = intent.getData();
+                            String pkg = uri != null ? uri.getSchemeSpecificPart() : null;
+                            mRegisteredNxpServicesCache.onPackageRemoved(pkg); //GSMA changes
+                            mRegisteredNxpServicesCache.writeDynamicApduService();
+                        }
                         if (currentUser == UserHandle.getUserId(uid)) {
                             invalidateCache(UserHandle.getUserId(uid));
                         } else {
@@ -162,9 +175,11 @@ public class RegisteredServicesCache {
         mDynamicAidsFile = new AtomicFile(new File(dataDir, "dynamic_aids.xml"));
     }
 
-    void initialize() {
+    void initialize(RegisteredNxpServicesCache registeredNxpServicesCache) {
+        mRegisteredNxpServicesCache = registeredNxpServicesCache;
         synchronized (mLock) {
             readDynamicAidsLocked();
+            mRegisteredNxpServicesCache.readDynamicApduService();
         }
         invalidateCache(ActivityManager.getCurrentUser());
     }
@@ -222,7 +237,7 @@ public class RegisteredServicesCache {
             Log.e(TAG, "Could not create user package context");
             return null;
         }
-
+        mAllServices.clear();
         ArrayList<ApduServiceInfo> validServices = new ArrayList<ApduServiceInfo>();
 
         List<ResolveInfo> resolvedServices = pm.queryIntentServicesAsUser(
@@ -242,8 +257,8 @@ public class RegisteredServicesCache {
                 // Check if the package holds the NFC permission
                 if (pm.checkPermission(android.Manifest.permission.NFC, si.packageName) !=
                         PackageManager.PERMISSION_GRANTED) {
-                    Log.e(TAG, "Skipping application component " + componentName +
-                            ": it must request the permission " +
+                    Log.e(TAG, "Skipping APDU service " + componentName +
+                            ": it does not require the permission " +
                             android.Manifest.permission.NFC);
                     continue;
                 }
@@ -257,6 +272,8 @@ public class RegisteredServicesCache {
                 ApduServiceInfo service = new ApduServiceInfo(pm, resolvedService, onHost);
                 if (service != null) {
                     validServices.add(service);
+                    if(!onHost)
+                        mAllServices.put(componentName, service);
                 }
             } catch (XmlPullParserException e) {
                 Log.w(TAG, "Unable to load component info " + resolvedService.toString(), e);
@@ -264,9 +281,22 @@ public class RegisteredServicesCache {
                 Log.w(TAG, "Unable to load component info " + resolvedService.toString(), e);
             }
         }
-
+        AddGsmaServices(validServices);
         return validServices;
     }
+
+    public ArrayList<ApduServiceInfo> getAllServices() {
+        return new ArrayList<ApduServiceInfo>(mAllServices.values());//mAllServices;
+    }
+
+    public HashMap<ComponentName, ApduServiceInfo> getAllStaticHashServices() {
+        return mAllServices;
+    }
+
+//Adding the GSMA Services to the Service List
+ private void AddGsmaServices(ArrayList<ApduServiceInfo> validServices){
+    validServices.addAll(mRegisteredNxpServicesCache.getApduservicesList());
+ }
 
     public void invalidateCache(int userId) {
         final ArrayList<ApduServiceInfo> validServices = getInstalledServices(userId);

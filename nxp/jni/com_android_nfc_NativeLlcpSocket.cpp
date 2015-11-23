@@ -13,6 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/******************************************************************************
+ *
+ *  The original Work has been changed by NXP Semiconductors.
+ *
+ *  Copyright (C) 2015 NXP Semiconductors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
 
 #include <semaphore.h>
 #include <errno.h>
@@ -24,7 +43,7 @@ namespace android {
 /*
  * Callbacks
  */
- 
+
 static void nfc_jni_disconnect_callback(void*        pContext,
                                                NFCSTATUS    status)
 {
@@ -36,7 +55,7 @@ static void nfc_jni_disconnect_callback(void*        pContext,
    sem_post(&pCallbackData->sem);
 }
 
- 
+
 static void nfc_jni_connect_callback(void* pContext, uint8_t nErrCode, NFCSTATUS status)
 {
    struct nfc_jni_callback_data * pCallbackData = (struct nfc_jni_callback_data *) pContext;
@@ -77,20 +96,20 @@ static void nfc_jni_connect_callback(void* pContext, uint8_t nErrCode, NFCSTATUS
             }break;
       }
    }
-   
+
    /* Report the callback status and wake up the caller */
    pCallbackData->status = status;
    sem_post(&pCallbackData->sem);
-} 
+}
 
 
 
- 
+
 static void nfc_jni_receive_callback(void* pContext, NFCSTATUS    status)
 {
    struct nfc_jni_callback_data * pCallbackData = (struct nfc_jni_callback_data *) pContext;
    LOG_CALLBACK("nfc_jni_llcp_receive_callback", status);
-   
+
    /* Report the callback status and wake up the caller */
    pCallbackData->status = status;
    sem_post(&pCallbackData->sem);
@@ -121,7 +140,7 @@ static jboolean com_android_nfc_NativeLlcpSocket_doConnect(JNIEnv *e, jobject o,
    /* Retrieve handles */
    hRemoteDevice = nfc_jni_get_p2p_device_handle(e,o);
    hLlcpSocket = nfc_jni_get_nfc_socket_handle(e,o);
-   
+
    /* Create the local semaphore */
    if (!nfc_cb_data_init(&cb_data, NULL))
    {
@@ -167,7 +186,7 @@ static jboolean com_android_nfc_NativeLlcpSocket_doConnectBy(JNIEnv *e, jobject 
 {
    NFCSTATUS ret;
    struct timespec ts;
-   phNfc_sData_t serviceName = {NULL, 0};
+   phNfc_sData_t serviceName = {0};
    phLibNfc_Handle hRemoteDevice;
    phLibNfc_Handle hLlcpSocket;
    struct nfc_jni_callback_data cb_data;
@@ -186,7 +205,7 @@ static jboolean com_android_nfc_NativeLlcpSocket_doConnectBy(JNIEnv *e, jobject 
    /* Service socket */
    serviceName.buffer = (uint8_t*)e->GetStringUTFChars(sn, NULL);
    serviceName.length = (uint32_t)e->GetStringUTFLength(sn);
-   
+
    TRACE("phLibNfc_Llcp_ConnectByUri()");
    REENTRANCE_LOCK();
    ret = phLibNfc_Llcp_ConnectByUri(hRemoteDevice,
@@ -239,7 +258,7 @@ static jboolean com_android_nfc_NativeLlcpSocket_doClose(JNIEnv *e, jobject o)
    if(ret != NFCSTATUS_SUCCESS)
    {
       ALOGE("phLibNfc_Llcp_Close() returned 0x%04x[%s]", ret, nfc_jni_get_status_name(ret));
-      return FALSE; 
+      return FALSE;
    }
    TRACE("phLibNfc_Llcp_Close() returned 0x%04x[%s]", ret, nfc_jni_get_status_name(ret));
    return TRUE;
@@ -254,11 +273,11 @@ static jboolean com_android_nfc_NativeLlcpSocket_doSend(JNIEnv *e, jobject o, jb
    phNfc_sData_t sSendBuffer = {NULL, 0};
    struct nfc_jni_callback_data cb_data;
    jboolean result = JNI_FALSE;
-   
+
    /* Retrieve handles */
    hRemoteDevice = nfc_jni_get_p2p_device_handle(e,o);
    hLlcpSocket = nfc_jni_get_nfc_socket_handle(e,o);
-   
+
    /* Create the local semaphore */
    if (!nfc_cb_data_init(&cb_data, NULL))
    {
@@ -267,7 +286,7 @@ static jboolean com_android_nfc_NativeLlcpSocket_doSend(JNIEnv *e, jobject o, jb
 
    sSendBuffer.buffer = (uint8_t*)e->GetByteArrayElements(data, NULL);
    sSendBuffer.length = (uint32_t)e->GetArrayLength(data);
-   
+
    TRACE("phLibNfc_Llcp_Send()");
    REENTRANCE_LOCK();
    ret = phLibNfc_Llcp_Send(hRemoteDevice,
@@ -280,7 +299,7 @@ static jboolean com_android_nfc_NativeLlcpSocket_doSend(JNIEnv *e, jobject o, jb
    {
       ALOGE("phLibNfc_Llcp_Send() returned 0x%04x[%s]", ret, nfc_jni_get_status_name(ret));
       goto clean_and_return;
-   } 
+   }
    TRACE("phLibNfc_Llcp_Send() returned 0x%04x[%s]", ret, nfc_jni_get_status_name(ret));
 
    /* Wait for callback response */
@@ -315,11 +334,11 @@ static jint com_android_nfc_NativeLlcpSocket_doReceive(JNIEnv *e, jobject o, jby
    phNfc_sData_t sReceiveBuffer = {NULL, 0};
    struct nfc_jni_callback_data cb_data;
    jint result = -1;
-   
+
    /* Retrieve handles */
    hRemoteDevice = nfc_jni_get_p2p_device_handle(e,o);
    hLlcpSocket = nfc_jni_get_nfc_socket_handle(e,o);
-   
+
    /* Create the local semaphore */
    if (!nfc_cb_data_init(&cb_data, NULL))
    {
@@ -328,7 +347,7 @@ static jint com_android_nfc_NativeLlcpSocket_doReceive(JNIEnv *e, jobject o, jby
 
    sReceiveBuffer.buffer = (uint8_t*)e->GetByteArrayElements(buffer, NULL);
    sReceiveBuffer.length = (uint32_t)e->GetArrayLength(buffer);
-   
+
    TRACE("phLibNfc_Llcp_Recv()");
    REENTRANCE_LOCK();
    ret = phLibNfc_Llcp_Recv(hRemoteDevice,
@@ -378,11 +397,11 @@ static jint com_android_nfc_NativeLlcpSocket_doGetRemoteSocketMIU(JNIEnv *e, job
    phLibNfc_Handle hRemoteDevice;
    phLibNfc_Handle hLlcpSocket;
    phLibNfc_Llcp_sSocketOptions_t   remoteSocketOption;
-   
+
    /* Retrieve handles */
    hRemoteDevice = nfc_jni_get_p2p_device_handle(e,o);
-   hLlcpSocket = nfc_jni_get_nfc_socket_handle(e,o);   
-   
+   hLlcpSocket = nfc_jni_get_nfc_socket_handle(e,o);
+
    TRACE("phLibNfc_Llcp_SocketGetRemoteOptions(MIU)");
    REENTRANCE_LOCK();
    ret  = phLibNfc_Llcp_SocketGetRemoteOptions(hRemoteDevice,
@@ -410,7 +429,7 @@ static jint com_android_nfc_NativeLlcpSocket_doGetRemoteSocketRW(JNIEnv *e, jobj
 
    /* Retrieve handles */
    hRemoteDevice = nfc_jni_get_p2p_device_handle(e,o);
-   hLlcpSocket = nfc_jni_get_nfc_socket_handle(e,o);   
+   hLlcpSocket = nfc_jni_get_nfc_socket_handle(e,o);
 
    TRACE("phLibNfc_Llcp_SocketGetRemoteOptions(RW)");
    REENTRANCE_LOCK();
@@ -441,19 +460,19 @@ static JNINativeMethod gMethods[] =
 
    {"doConnectBy", "(Ljava/lang/String;)Z",
       (void *)com_android_nfc_NativeLlcpSocket_doConnectBy},
-      
+
    {"doClose", "()Z",
       (void *)com_android_nfc_NativeLlcpSocket_doClose},
-      
+
    {"doSend", "([B)Z",
       (void *)com_android_nfc_NativeLlcpSocket_doSend},
 
    {"doReceive", "([B)I",
       (void *)com_android_nfc_NativeLlcpSocket_doReceive},
-      
+
    {"doGetRemoteSocketMiu", "()I",
       (void *)com_android_nfc_NativeLlcpSocket_doGetRemoteSocketMIU},
-           
+
    {"doGetRemoteSocketRw", "()I",
       (void *)com_android_nfc_NativeLlcpSocket_doGetRemoteSocketRW},
 };

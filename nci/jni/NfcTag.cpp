@@ -13,7 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
+/******************************************************************************
+ *
+ *  The original Work has been changed by NXP Semiconductors.
+ *
+ *  Copyright (C) 2015 NXP Semiconductors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
 /*
  *  Tag-reading, tag-writing operations.
  */
@@ -27,8 +45,13 @@
 extern "C"
 {
     #include "rw_int.h"
+    #include "phNxpExtns.h"
 }
 
+static void deleteglobaldata(JNIEnv* e);
+static jobjectArray techActBytes1;
+int selectedId = 0;
+static jobjectArray techPollBytes2;
 
 /*******************************************************************************
 **
@@ -41,6 +64,9 @@ extern "C"
 *******************************************************************************/
 NfcTag::NfcTag ()
 :   mNumTechList (0),
+    mNumDiscNtf (0),
+    mNumDiscTechList (0),
+    mTechListIndex (0),
     mTechnologyTimeoutsTable (MAX_NUM_TECHNOLOGY),
     mNativeData (NULL),
     mIsActivated (false),
@@ -52,13 +78,17 @@ NfcTag::NfcTag ()
     mNdefDetectionTimedOut (false),
     mIsDynamicTagId (false),
     mPresenceCheckAlgorithm (NFA_RW_PRES_CHK_DEFAULT),
-    mIsFelicaLite(false)
+    mIsFelicaLite(false),
+    mCashbeeDetected(false),
+    mEzLinkTypeTag(false)
 {
     memset (mTechList, 0, sizeof(mTechList));
     memset (mTechHandles, 0, sizeof(mTechHandles));
     memset (mTechLibNfcTypes, 0, sizeof(mTechLibNfcTypes));
     memset (mTechParams, 0, sizeof(mTechParams));
     memset(mLastKovioUid, 0, NFC_KOVIO_MAX_LEN);
+    memset(&mLastKovioTime, 0, sizeof(mLastKovioTime));
+    memset(&mActivationParams_t, 0, sizeof(activationParams_t));
 }
 
 
@@ -97,8 +127,12 @@ void NfcTag::initialize (nfc_jni_native_data* native)
     mActivationState = Idle;
     mProtocol = NFC_PROTOCOL_UNKNOWN;
     mNumTechList = 0;
+    mNumDiscNtf = 0;
+    mNumDiscTechList = 0;
+    mTechListIndex = 0;
     mtT1tMaxMessageSize = 0;
     mReadCompletedStatus = NFA_STATUS_OK;
+    mNfcDisableinProgress = false;
     resetTechnologies ();
     if (GetNumValue(NAME_PRESENCE_CHECK_ALGORITHM, &num, sizeof(num)))
         mPresenceCheckAlgorithm = num;
@@ -301,7 +335,15 @@ void NfcTag::discoverTechnologies (tNFA_ACTIVATED& activationData)
     ALOGD ("%s: enter", fn);
     tNFC_ACTIVATE_DEVT& rfDetail = activationData.activate_ntf;
 
-    mNumTechList = 0;
+    mNumTechList = mTechListIndex;
+    ALOGE ("mNumTechList =%d, mTechListIndex=%d", mNumTechList, mTechListIndex);
+#if(NXP_EXTNS == TRUE)
+    if (mNumTechList >= MAX_NUM_TECHNOLOGY)
+    {
+        ALOGE ("%s: exceed max=%d", fn, MAX_NUM_TECHNOLOGY);
+        goto TheEnd;
+    }
+#endif
     mTechHandles [mNumTechList] = rfDetail.rf_disc_id;
     mTechLibNfcTypes [mNumTechList] = rfDetail.protocol;
 
@@ -324,9 +366,15 @@ void NfcTag::discoverTechnologies (tNFA_ACTIVATED& activationData)
 
             if ((tech_params.param.pa.nfcid1[0] == 0x04 && rfDetail.rf_tech_param.param.pa.sel_rsp == 0) ||
                 rfDetail.rf_tech_param.param.pa.sel_rsp == 0x18 ||
-                rfDetail.rf_tech_param.param.pa.sel_rsp == 0x08)
+                rfDetail.rf_tech_param.param.pa.sel_rsp == 0x08 ||
+                rfDetail.rf_tech_param.param.pa.sel_rsp == 0x01)
             {
+#if(NXP_EXTNS == TRUE)
+                if ((rfDetail.rf_tech_param.param.pa.sel_rsp == 0) &&
+                     (mNumTechList < (MAX_NUM_TECHNOLOGY-1)))
+#else
                 if (rfDetail.rf_tech_param.param.pa.sel_rsp == 0)
+#endif
                 {
                     mNumTechList++;
                     mTechHandles [mNumTechList] = rfDetail.rf_disc_id;
@@ -335,6 +383,25 @@ void NfcTag::discoverTechnologies (tNFA_ACTIVATED& activationData)
                     memcpy (&(mTechParams[mNumTechList]), &(rfDetail.rf_tech_param), sizeof(rfDetail.rf_tech_param));
                     mTechList [mNumTechList] = TARGET_TYPE_MIFARE_UL; //is TagTechnology.MIFARE_ULTRALIGHT by Java API
                 }
+#if(NXP_EXTNS == TRUE)
+                              //To support skylander tag.
+                else if (rfDetail.rf_tech_param.param.pa.sel_rsp == 0x01)
+                {
+                    mTechLibNfcTypes [mNumTechList] = NFC_PROTOCOL_MIFARE;
+                    rfDetail.rf_tech_param.param.pa.sel_rsp = 0x08;
+                    memcpy (&tech_params, &(rfDetail.rf_tech_param), sizeof(rfDetail.rf_tech_param));
+                    if(mNumTechList < (MAX_NUM_TECHNOLOGY-1))
+                    {
+                        mNumTechList++;
+                        mTechHandles [mNumTechList] = rfDetail.rf_disc_id;
+                        mTechLibNfcTypes [mNumTechList] = NFC_PROTOCOL_MIFARE;
+                        //save the stack's data structure for interpretation later
+                        memcpy (&(mTechParams[mNumTechList]), &(rfDetail.rf_tech_param), sizeof(rfDetail.rf_tech_param));
+                        mTechList [mNumTechList] = TARGET_TYPE_MIFARE_CLASSIC; //is TagTechnology.MIFARE_CLASSIC by Java API
+                    }
+                    EXTNS_MfcInit(activationData);
+                }
+#endif
             }
         }
         break;
@@ -359,10 +426,17 @@ void NfcTag::discoverTechnologies (tNFA_ACTIVATED& activationData)
 
     case NFC_PROTOCOL_ISO_DEP: //type-4 tag uses technology ISO-DEP and technology A or B
         mTechList [mNumTechList] = TARGET_TYPE_ISO14443_4; //is TagTechnology.ISO_DEP by Java API
-        if ( (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_A) ||
+#if(NXP_EXTNS == TRUE)
+        if ( ( (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_A) ||
                 (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_A_ACTIVE) ||
                 (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_LISTEN_A) ||
-                (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_LISTEN_A_ACTIVE) )
+                (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_LISTEN_A_ACTIVE) ) && mNumTechList < (MAX_NUM_TECHNOLOGY-1))
+#else
+            if ( (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_A) ||
+                    (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_A_ACTIVE) ||
+                    (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_LISTEN_A) ||
+                    (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_LISTEN_A_ACTIVE))
+#endif
         {
             mNumTechList++;
             mTechHandles [mNumTechList] = rfDetail.rf_disc_id;
@@ -371,10 +445,17 @@ void NfcTag::discoverTechnologies (tNFA_ACTIVATED& activationData)
             //save the stack's data structure for interpretation later
             memcpy (&(mTechParams[mNumTechList]), &(rfDetail.rf_tech_param), sizeof(rfDetail.rf_tech_param));
         }
-        else if ( (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_B) ||
-                (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_B_PRIME) ||
-                (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_LISTEN_B) ||
-                (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_LISTEN_B_PRIME) )
+#if(NXP_EXTNS == TRUE)
+            else if ( ((rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_B) ||
+                    (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_B_PRIME) ||
+                    (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_LISTEN_B) ||
+                    (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_LISTEN_B_PRIME) ) && mNumTechList < (MAX_NUM_TECHNOLOGY-1))
+#else
+            else if ((rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_B) ||
+                    (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_POLL_B_PRIME) ||
+                    (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_LISTEN_B) ||
+                    (rfDetail.rf_tech_param.mode == NFC_DISCOVERY_TYPE_LISTEN_B_PRIME))
+#endif
         {
             mNumTechList++;
             mTechHandles [mNumTechList] = rfDetail.rf_disc_id;
@@ -394,6 +475,39 @@ void NfcTag::discoverTechnologies (tNFA_ACTIVATED& activationData)
         mTechList [mNumTechList] = TARGET_TYPE_KOVIO_BARCODE;
         break;
 
+#if (NXP_EXTNS == TRUE)
+    case NFC_PROTOCOL_MIFARE:
+        ALOGE ("Mifare Classic detected");
+        EXTNS_MfcInit(activationData);
+        mTechList [mNumTechList] = TARGET_TYPE_ISO14443_3A;  //is TagTechnology.NFC_A by Java API
+        // could be MifFare UL or Classic or Kovio
+        {
+            // need to look at first byte of uid to find manuf.
+            tNFC_RF_TECH_PARAMS tech_params;
+            memcpy (&tech_params, &(rfDetail.rf_tech_param), sizeof(rfDetail.rf_tech_param));
+            if (mNumTechList < (MAX_NUM_TECHNOLOGY-1))
+                {
+                    mNumTechList++;
+                    mTechHandles [mNumTechList] = rfDetail.rf_disc_id;
+                    mTechLibNfcTypes [mNumTechList] = rfDetail.protocol;
+                    //save the stack's data structure for interpretation later
+                    memcpy (&(mTechParams[mNumTechList]), &(rfDetail.rf_tech_param), sizeof(rfDetail.rf_tech_param));
+                    mTechList [mNumTechList] = TARGET_TYPE_MIFARE_CLASSIC; //is TagTechnology.MIFARE_ULTRALIGHT by Java API
+                }
+        }
+        break;
+
+    case NFC_PROTOCOL_T3BT:
+        {
+            mTechHandles [mNumTechList] = rfDetail.rf_disc_id;
+            mTechLibNfcTypes [mNumTechList] = rfDetail.protocol;
+            mTechList [mNumTechList] = TARGET_TYPE_ISO14443_3B; //is TagTechnology.NFC_B by Java API
+            //save the stack's data structure for interpretation later
+            memcpy (&(mTechParams[mNumTechList]), &(rfDetail.rf_tech_param), sizeof(rfDetail.rf_tech_param));
+        }
+        break;
+#endif
+
     default:
         ALOGE ("%s: unknown protocol ????", fn);
         mTechList [mNumTechList] = TARGET_TYPE_UNKNOWN;
@@ -401,11 +515,18 @@ void NfcTag::discoverTechnologies (tNFA_ACTIVATED& activationData)
     }
 
     mNumTechList++;
+#if (NXP_EXTNS == TRUE)
+        for (int i=0; (i < mNumTechList) && (mNumTechList < MAX_NUM_TECHNOLOGY); i++)
+#else
     for (int i=0; i < mNumTechList; i++)
+#endif
     {
         ALOGD ("%s: index=%d; tech=%d; handle=%d; nfc type=%d", fn,
                 i, mTechList[i], mTechHandles[i], mTechLibNfcTypes[i]);
     }
+#if (NXP_EXTNS == TRUE)
+TheEnd:
+#endif
     ALOGD ("%s: exit", fn);
 }
 
@@ -503,6 +624,21 @@ void NfcTag::discoverTechnologies (tNFA_DISC_RESULT& discoveryData)
         mTechList [mNumTechList] = TARGET_TYPE_ISO15693;
         break;
 
+#if (NXP_EXTNS ==TRUE)
+    case NFC_PROTOCOL_MIFARE:
+        mTechHandles [mNumTechList] = discovery_ntf.rf_disc_id;
+        mTechLibNfcTypes [mNumTechList] = discovery_ntf.protocol;
+        mTechList [mNumTechList] = TARGET_TYPE_MIFARE_CLASSIC;
+        //save the stack's data structure for interpretation later
+        memcpy (&(mTechParams[mNumTechList]), &(discovery_ntf.rf_tech_param), sizeof(discovery_ntf.rf_tech_param));
+        mNumTechList++;
+        if (mNumTechList < MAX_NUM_TECHNOLOGY)
+        {
+            mTechList [mNumTechList] = TARGET_TYPE_ISO14443_3A;
+        }
+        break;
+#endif
+
     default:
         ALOGE ("%s: unknown protocol ????", fn);
         mTechList [mNumTechList] = TARGET_TYPE_UNKNOWN;
@@ -510,14 +646,23 @@ void NfcTag::discoverTechnologies (tNFA_DISC_RESULT& discoveryData)
     }
 
     mNumTechList++;
-    if (discovery_ntf.more == FALSE)
+
+#if (NXP_EXTNS == TRUE)
+    if(discovery_ntf.more != NCI_DISCOVER_NTF_MORE)
+#endif
     {
+#if (NXP_EXTNS == TRUE)
+        for (int i=0; (i < mNumTechList) && (mNumTechList < MAX_NUM_TECHNOLOGY); i++)
+#else
         for (int i=0; i < mNumTechList; i++)
+#endif
         {
             ALOGD ("%s: index=%d; tech=%d; handle=%d; nfc type=%d", fn,
                     i, mTechList[i], mTechHandles[i], mTechLibNfcTypes[i]);
         }
     }
+    mNumDiscTechList = mNumTechList;
+    ALOGD("%s; mNumDiscTechList=%x", fn, mNumDiscTechList);
 
 TheEnd:
     ALOGD ("%s: exit", fn);
@@ -582,15 +727,51 @@ void NfcTag::createNativeNfcTag (tNFA_ACTIVATED& activationData)
     }
     mNativeData->tag = e->NewGlobalRef(tag.get());
 
-    //notify NFC service about this new tag
-    ALOGD ("%s: try notify nfc service", fn);
-    e->CallVoidMethod(mNativeData->manager, android::gCachedNfcManagerNotifyNdefMessageListeners, tag.get());
-    if (e->ExceptionCheck())
+    ALOGE("%s; mNumDiscNtf=%x", fn,mNumDiscNtf);
+    if(!mNumDiscNtf || NfcTag::getInstance().checkNextValidProtocol() == -1)
     {
-        e->ExceptionClear();
-        ALOGE ("%s: fail notify nfc service", fn);
+        //notify NFC service about this new tag
+        mNumDiscNtf = 0;
+        ALOGD ("%s: try notify nfc service", fn);
+        storeActivationParams();
+        e->CallVoidMethod(mNativeData->manager, android::gCachedNfcManagerNotifyNdefMessageListeners, tag.get());
+        if (e->ExceptionCheck())
+        {
+            e->ExceptionClear();
+            ALOGE ("%s: fail notify nfc service", fn);
+        }
+        deleteglobaldata(e);
+    }
+    else
+    {
+        ALOGE("%s: Selecting next tag", fn);
     }
 
+    ALOGD ("%s: exit", fn);
+}
+
+/*******************************************************************************
+**
+** Function:        deleteglobaldata
+**
+** Description:     Deletes the global data reference after notifying to service
+**                  e: JVM environment.
+**
+** Returns:         None
+**
+*******************************************************************************/
+static void deleteglobaldata(JNIEnv* e)
+{
+    static const char fn [] = "deleteglobaldata";
+    ALOGD ("%s: enter", fn);
+    if( techActBytes1 != NULL)
+    {
+        e->DeleteGlobalRef(techActBytes1);
+    }
+    if(techPollBytes2 != NULL)
+    {
+        e->DeleteGlobalRef(techPollBytes2);
+    }
     ALOGD ("%s: exit", fn);
 }
 
@@ -658,6 +839,7 @@ void NfcTag::fillNativeNfcTagMembers1 (JNIEnv* e, jclass tag_cls, jobject tag)
 ** Returns:         None
 **
 *******************************************************************************/
+//fill NativeNfcTag's members: mHandle, mConnectedTechnology
 void NfcTag::fillNativeNfcTagMembers2 (JNIEnv* e, jclass tag_cls, jobject tag, tNFA_ACTIVATED& /*activationData*/)
 {
     static const char fn [] = "NfcTag::fillNativeNfcTagMembers2";
@@ -690,7 +872,22 @@ void NfcTag::fillNativeNfcTagMembers3 (JNIEnv* e, jclass tag_cls, jobject tag, t
     ScopedLocalRef<jobjectArray> techPollBytes(e, e->NewObjectArray(mNumTechList, byteArrayClass.get(), 0));
     int len = 0;
 
-    for (int i = 0; i < mNumTechList; i++)
+    if(mTechListIndex == 0)
+    {
+        techPollBytes2= reinterpret_cast<jobjectArray>(e->NewGlobalRef(techPollBytes.get()));
+    }
+    else
+    {
+        for(int j=0;j<mTechListIndex;j++)
+        {
+            ScopedLocalRef<jobject> obj1(e, e->GetObjectArrayElement(techPollBytes2, j));
+            e->SetObjectArrayElement(techPollBytes.get(), j, obj1.get());
+        }
+    }
+
+    ALOGD("%s;mTechListIndex=%x", fn,mTechListIndex);
+    for (int i = mTechListIndex; i < mNumTechList; i++)
+
     {
         ALOGD ("%s: index=%d; rf tech params mode=%u", fn, i, mTechParams [i].mode);
         switch (mTechParams [i].mode)
@@ -718,8 +915,15 @@ void NfcTag::fillNativeNfcTagMembers3 (JNIEnv* e, jclass tag_cls, jobject tag, t
                 ALOGD ("%s: tech B; TARGET_TYPE_ISO14443_3B", fn);
                 len = mTechParams [i].param.pb.sensb_res_len;
                 len = len - 4; //subtract 4 bytes for NFCID0 at byte 2 through 5
-                pollBytes.reset(e->NewByteArray(len));
-                e->SetByteArrayRegion(pollBytes.get(), 0, len, (jbyte*) (mTechParams [i].param.pb.sensb_res+4));
+                if(len > 0)
+                {
+                    pollBytes.reset(e->NewByteArray(len));
+                    e->SetByteArrayRegion(pollBytes.get(), 0, len, (jbyte*) (mTechParams [i].param.pb.sensb_res+4));
+                }
+                else
+                {
+                    ALOGD ("%s: tech B; Activation param missing", fn);
+                }
             }
             else
             {
@@ -776,13 +980,27 @@ void NfcTag::fillNativeNfcTagMembers3 (JNIEnv* e, jclass tag_cls, jobject tag, t
             }
             break;
 
+        case NFC_DISCOVERY_TYPE_POLL_KOVIO:
+            {
+                ALOGD ("%s: tech Kovio", fn);
+                pollBytes.reset(e->NewByteArray(0));
+            }
+            break;
+
         default:
             ALOGE ("%s: tech unknown ????", fn);
             pollBytes.reset(e->NewByteArray(0));
             break;
         } //switch: every type of technology
         e->SetObjectArrayElement(techPollBytes.get(), i, pollBytes.get());
-    } //for: every technology in the array
+    }
+    if (techPollBytes2 != NULL && mTechListIndex != 0 )
+    {
+        e->DeleteGlobalRef(techPollBytes2);
+
+        techPollBytes2= reinterpret_cast<jobjectArray>(e->NewGlobalRef(techPollBytes.get()));
+    }
+    //for: every technology in the array
     jfieldID f = e->GetFieldID(tag_cls, "mTechPollBytes", "[[B");
     e->SetObjectField(tag, f, techPollBytes.get());
 }
@@ -810,7 +1028,22 @@ void NfcTag::fillNativeNfcTagMembers4 (JNIEnv* e, jclass tag_cls, jobject tag, t
     ScopedLocalRef<jclass> byteArrayClass(e, e->GetObjectClass(actBytes.get()));
     ScopedLocalRef<jobjectArray> techActBytes(e, e->NewObjectArray(mNumTechList, byteArrayClass.get(), 0));
 
-    for (int i = 0; i < mNumTechList; i++)
+    if(mTechListIndex == 0)
+    {
+        techActBytes1 = reinterpret_cast<jobjectArray>(e->NewGlobalRef(techActBytes.get()));
+    }
+    else
+    {
+        for(int j=0;j < mTechListIndex;j++)
+        {
+            ScopedLocalRef<jobject> obj1(e, e->GetObjectArrayElement(techActBytes1, j));
+            e->SetObjectArrayElement(techActBytes.get(), j, obj1.get());
+        }
+    }
+
+    ALOGD("%s;mTechListIndex=%x", fn,mTechListIndex);
+    for (int i = mTechListIndex; i < mNumTechList; i++)
+
     {
         ALOGD ("%s: index=%d", fn, i);
         switch (mTechLibNfcTypes[i])
@@ -834,6 +1067,24 @@ void NfcTag::fillNativeNfcTagMembers4 (JNIEnv* e, jclass tag_cls, jobject tag, t
                 actBytes.reset(e->NewByteArray(0));
             }
             break;
+
+#if (NXP_EXTNS == TRUE)
+         case NFC_PROTOCOL_MIFARE:
+            {
+                ALOGD ("%s: Mifare Classic; tech A", fn);
+                actBytes.reset(e->NewByteArray(1));
+                e->SetByteArrayRegion (actBytes.get(), 0, 1,
+                        (jbyte*) &mTechParams [i].param.pa.sel_rsp);
+            }
+            break;
+
+         case NFC_PROTOCOL_T3BT:
+            {
+                ALOGD ("%s: tech T3BT; chinaId card", fn);
+                actBytes.reset(e->NewByteArray(0));
+                break;
+            }
+#endif
 
         case NFC_PROTOCOL_ISO_DEP: //t4t
             {
@@ -909,13 +1160,26 @@ void NfcTag::fillNativeNfcTagMembers4 (JNIEnv* e, jclass tag_cls, jobject tag, t
             }
             break;
 
+        case NFC_PROTOCOL_KOVIO:
+            {
+                ALOGD ("%s: tech Kovio", fn);
+                actBytes.reset(e->NewByteArray(0));
+            }
+            break;
+
         default:
             ALOGD ("%s: tech unknown ????", fn);
             actBytes.reset(e->NewByteArray(0));
             break;
         }//switch
         e->SetObjectArrayElement(techActBytes.get(), i, actBytes.get());
-    } //for: every technology in the array
+        }
+    if (techActBytes1 != NULL && mTechListIndex !=0 )
+    {
+        e->DeleteGlobalRef(techActBytes1);
+        techActBytes1 = reinterpret_cast<jobjectArray>(e->NewGlobalRef(techActBytes.get()));
+    }
+    //for: every technology in the array
     jfieldID f = e->GetFieldID (tag_cls, "mTechActBytes", "[[B");
     e->SetObjectField(tag, f, techActBytes.get());
 }
@@ -973,10 +1237,25 @@ void NfcTag::fillNativeNfcTagMembers5 (JNIEnv* e, jclass tag_cls, jobject tag, t
     case NFC_DISCOVERY_TYPE_POLL_B_PRIME:
     case NFC_DISCOVERY_TYPE_LISTEN_B:
     case NFC_DISCOVERY_TYPE_LISTEN_B_PRIME:
-        ALOGD ("%s: tech B", fn);
-        uid.reset(e->NewByteArray(NFC_NFCID0_MAX_LEN));
-        e->SetByteArrayRegion(uid.get(), 0, NFC_NFCID0_MAX_LEN,
-                (jbyte*) &mTechParams [0].param.pb.nfcid0);
+#if (NXP_EXTNS == TRUE)
+        if(activationData.activate_ntf.protocol != NFA_PROTOCOL_T3BT)
+#endif
+        {
+            ALOGD ("%s: tech B", fn);
+            uid.reset(e->NewByteArray(NFC_NFCID0_MAX_LEN));
+            e->SetByteArrayRegion(uid.get(), 0, NFC_NFCID0_MAX_LEN,
+                    (jbyte*) &mTechParams [0].param.pb.nfcid0);
+        }
+#if (NXP_EXTNS == TRUE)
+        else
+        {
+            ALOGD ("%s: chinaId card", fn);
+            ALOGD ("%s: pipi_id[0]=%x", fn, mTechParams [0].param.pb.pupiid[0]);
+            uid.reset(e->NewByteArray(NFC_PUPIID_MAX_LEN));
+            e->SetByteArrayRegion(uid.get(), 0, NFC_PUPIID_MAX_LEN,
+                    (jbyte*) &mTechParams [0].param.pb.pupiid);
+        }
+#endif
         break;
 
     case NFC_DISCOVERY_TYPE_POLL_F:
@@ -1008,6 +1287,10 @@ void NfcTag::fillNativeNfcTagMembers5 (JNIEnv* e, jclass tag_cls, jobject tag, t
     }
     jfieldID f = e->GetFieldID(tag_cls, "mUid", "[B");
     e->SetObjectField(tag, f, uid.get());
+    mTechListIndex = mNumTechList;
+    if(!mNumDiscNtf)
+        mTechListIndex = 0;
+    ALOGD("%s;mTechListIndex=%x",fn,mTechListIndex);
 }
 
 
@@ -1039,7 +1322,21 @@ bool NfcTag::isP2pDiscovered ()
     return retval;
 }
 
-
+/*******************************************************************************
+**
+** Function:        storeActivationParams
+**
+** Description:     stores tag activation parameters for backup
+**
+** Returns:         None
+**
+*******************************************************************************/
+void NfcTag::storeActivationParams()
+{
+    static const char fn [] = "NfcTag::storeActivationParams";
+    mActivationParams_t.mTechParams = mTechParams[0].mode;
+    mActivationParams_t.mTechLibNfcTypes = mTechLibNfcTypes [0];
+}
 /*******************************************************************************
 **
 ** Function:        selectP2p
@@ -1103,7 +1400,8 @@ void NfcTag::resetTechnologies ()
 {
     static const char fn [] = "NfcTag::resetTechnologies";
     ALOGD ("%s", fn);
-   	mNumTechList = 0;
+    mNumTechList = 0;
+    mTechListIndex = 0;
     memset (mTechList, 0, sizeof(mTechList));
     memset (mTechHandles, 0, sizeof(mTechHandles));
     memset (mTechLibNfcTypes, 0, sizeof(mTechLibNfcTypes));
@@ -1136,6 +1434,7 @@ void NfcTag::selectFirstTag ()
         if (mTechLibNfcTypes[i] != NFA_PROTOCOL_NFC_DEP)
         {
             foundIdx = i;
+            selectedId = i;
             break;
         }
     }
@@ -1146,11 +1445,101 @@ void NfcTag::selectFirstTag ()
         {
             rf_intf = NFA_INTERFACE_ISO_DEP;
         }
+#if (NXP_EXTNS ==TRUE)
+        else if(mTechLibNfcTypes [foundIdx] == NFA_PROTOCOL_MIFARE)
+        {
+            rf_intf = NFA_INTERFACE_MIFARE;
+        }
+#endif
         else
             rf_intf = NFA_INTERFACE_FRAME;
 
         tNFA_STATUS stat = NFA_Select (mTechHandles [foundIdx], mTechLibNfcTypes [foundIdx], rf_intf);
         if (stat != NFA_STATUS_OK)
+            ALOGE ("%s: fail select; error=0x%X", fn, stat);
+    }
+    else
+        ALOGE ("%s: only found NFC-DEP technology.", fn);
+}
+
+/*******************************************************************************
+**
+** Function:        checkNextValidProtocol
+**
+** Description:     When multiple tags are discovered, check next valid protocol
+**
+** Returns:         id
+**
+*******************************************************************************/
+int NfcTag::checkNextValidProtocol(void)
+{
+    static const char fn [] = "NfcTag::checkNextValidProtocol";
+    ALOGD("%s: enter, mNumDiscTechList=%x", fn, mNumDiscTechList);
+    int foundIdx = -1;
+    ALOGD("%s: enter,selectedId=%x", fn, selectedId);
+    for (int i = 0; i < mNumDiscTechList; i++)
+    {
+        ALOGD ("%s: nfa target idx=%d h=0x%X; protocol=0x%X",
+                fn, i, mTechHandles [i], mTechLibNfcTypes [i]);
+        if ((mTechHandles[selectedId] != mTechHandles [i]) &&
+            (mTechLibNfcTypes[i] != NFA_PROTOCOL_NFC_DEP))
+        {
+            foundIdx = i;
+            break;
+        }
+    }
+    return foundIdx;
+}
+
+ /*******************************************************************************
+**
+** Function:        selectNextTag
+**
+** Description:     When multiple tags are discovered, selects the Nex one to activate.
+**
+** Returns:         None
+**
+*******************************************************************************/
+void NfcTag::selectNextTag ()
+{
+    static const char fn [] = "NfcTag::selectNextTag";
+    int foundIdx = -1;
+    tNFA_INTF_TYPE rf_intf = NFA_INTERFACE_FRAME;
+    tNFA_STATUS stat = NFA_STATUS_FAILED;
+
+    ALOGD("%s: enter, mNumDiscTechList=%x", fn, mNumDiscTechList);
+    for (int i = 0; i < mNumDiscTechList; i++)
+    {
+        ALOGD ("%s: nfa target idx=%d h=0x%X; protocol=0x%X",
+                fn, i, mTechHandles [i], mTechLibNfcTypes [i]);
+        if ((mTechHandles[selectedId] != mTechHandles [i]) &&
+            (mTechLibNfcTypes[i] != NFA_PROTOCOL_NFC_DEP))
+        {
+            selectedId = i;
+            foundIdx = i;
+            break;
+        }
+    }
+
+    if (foundIdx != -1)
+    {
+        if (mTechLibNfcTypes [foundIdx] == NFA_PROTOCOL_ISO_DEP)
+        {
+            rf_intf = NFA_INTERFACE_ISO_DEP;
+        }
+        else if(mTechLibNfcTypes [foundIdx] == NFA_PROTOCOL_MIFARE)
+        {
+            rf_intf = NFA_INTERFACE_MIFARE;
+        }
+        else
+            rf_intf = NFA_INTERFACE_FRAME;
+
+        stat = NFA_Select (mTechHandles [foundIdx], mTechLibNfcTypes [foundIdx], rf_intf);
+        if (stat == NFA_STATUS_OK)
+        {
+            ALOGE ("%s: stat=%x; wait for activated ntf", fn, stat);
+        }
+        else
             ALOGE ("%s: fail select; error=0x%X", fn, stat);
     }
     else
@@ -1243,6 +1632,41 @@ bool NfcTag::isMifareUltralight ()
                  (mTechParams[i].param.pa.sens_res[1] == 0) &&
                  ( (mTechParams[i].param.pa.sel_rsp == 0) || (mTechParams[i].param.pa.sel_rsp == 0x04) ) &&
                  (mTechParams[i].param.pa.nfcid1[0] == 0x04) )
+            {
+                retval = true;
+            }
+            break;
+        }
+    }
+    ALOGD ("%s: return=%u", fn, retval);
+    return retval;
+}
+
+
+/*******************************************************************************
+**
+** Function:        isMifareDESFire
+**
+** Description:     Whether the currently activated tag is Mifare DESFire.
+**
+** Returns:         True if tag is Mifare DESFire.
+**
+*******************************************************************************/
+bool NfcTag::isMifareDESFire ()
+{
+    static const char fn [] = "NfcTag::isMifareDESFire";
+    bool retval = false;
+
+    for (int i =0; i < mNumTechList; i++)
+    {
+        if ( (mTechParams[i].mode == NFC_DISCOVERY_TYPE_POLL_A) ||
+             (mTechParams[i].mode == NFC_DISCOVERY_TYPE_LISTEN_A) ||
+             (mTechParams[i].mode == NFC_DISCOVERY_TYPE_LISTEN_A_ACTIVE) )
+        {
+            /* DESfire has one sak byte and 2 ATQA bytes */
+            if ( (mTechParams[i].param.pa.sens_res[0] == 0x44) &&
+                 (mTechParams[i].param.pa.sens_res[1] == 3) &&
+                 (mTechParams[i].param.pa.sel_rsp == 0x20))
             {
                 retval = true;
             }
@@ -1380,6 +1804,16 @@ void NfcTag::connectionEventHandler (UINT8 event, tNFA_CONN_EVT_DATA* data)
             if (mNdefDetectionTimedOut)
                 ALOGE ("%s: NDEF detection timed out", fn);
         }
+        break;
+
+    case NFA_ACTIVATED_UPDATE_EVT:
+        {
+            tNFA_ACTIVATED& activated = data->activated;
+            mIsActivated = true;
+            mProtocol = activated.activate_ntf.protocol;
+            discoverTechnologies (activated);
+        }
+        break;
     }
 }
 
@@ -1481,6 +1915,63 @@ void NfcTag::setTransceiveTimeout (int techId, int timeout)
         ALOGE ("%s: invalid tech=%d", fn, techId);
 }
 
+/*******************************************************************************
+**
+** Function:        isEzLinkTagActivated
+**
+** Description:     checks if EzLinkTag tag is detected
+**
+** Returns:         True if tag is activated.
+**
+*******************************************************************************/
+bool NfcTag::isEzLinkTagActivated ()
+{
+    static const char fn [] = "NfcTag::isEzLinkTagActivated";
+    return mEzLinkTypeTag;
+}
+
+/*******************************************************************************
+**
+** Function:        isCashBeeActivated
+**
+** Description:     checks if cashbee tag is detected
+**
+** Returns:         True if tag is activated.
+**
+*******************************************************************************/
+bool NfcTag::isCashBeeActivated ()
+{
+    static const char fn [] = "NfcTag::isCashBeeActivated";
+    return mCashbeeDetected;
+}
+
+/*******************************************************************************
+**
+** Function:        isTypeBTag
+**
+** Description:     Whether the currently activated tag is Type B.
+**
+** Returns:         True if tag is Type B.
+**
+*******************************************************************************/
+bool NfcTag::isTypeBTag ()
+{
+    static const char fn [] = "NfcTag::isTypeBTag";
+    bool retval = false;
+
+    for (int i =0; i < mNumTechList; i++)
+    {
+        if ( (mTechParams[i].mode == NFC_DISCOVERY_TYPE_POLL_B) ||
+             (mTechParams[i].mode == NFC_DISCOVERY_TYPE_LISTEN_B) )
+        {
+            retval = true;
+            break;
+        }
+    }
+    ALOGD ("%s: return=%u", fn, retval);
+    return retval;
+}
+
 
 /*******************************************************************************
 **
@@ -1558,4 +2049,22 @@ bool NfcTag::isKovioType2Tag ()
     }
     ALOGD ("%s: return=%u", fn, retval);
     return retval;
+}
+
+
+void NfcTag::getTypeATagUID(UINT8 **uid, UINT32 *len)
+{
+    for (int i =0; i < mNumTechList; i++)
+    {
+        if ( (mTechParams[i].mode == NFC_DISCOVERY_TYPE_POLL_A) ||
+             (mTechParams[i].mode == NFC_DISCOVERY_TYPE_LISTEN_A) )
+        {
+            *len = mTechParams [i].param.pa.nfcid1_len;
+            *uid = mTechParams [0].param.pa.nfcid1;
+            return;
+        }
+    }
+
+    *len = 0;
+    *uid = NULL;
 }

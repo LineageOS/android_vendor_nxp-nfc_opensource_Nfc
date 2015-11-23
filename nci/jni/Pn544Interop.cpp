@@ -148,4 +148,3 @@ void pn544InteropAbortNow ()
     gAbortNow = true;
     gMutex.unlock ();
 }
-

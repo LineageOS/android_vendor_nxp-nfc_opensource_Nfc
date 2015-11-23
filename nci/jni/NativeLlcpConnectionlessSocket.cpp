@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-#include <errno.h>
 #include <malloc.h>
 #include <semaphore.h>
 #include <string.h>
+#include <errno.h>
 #include "OverrideLog.h"
 #include "NfcJniUtil.h"
 #include "JavaClassConstants.h"

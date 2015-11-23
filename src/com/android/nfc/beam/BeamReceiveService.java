@@ -88,6 +88,7 @@ public class BeamReceiveService extends Service implements BeamTransferManager.C
     @Override
     public void onDestroy() {
         super.onDestroy();
+
         if (mBeamStatusReceiver != null) {
             unregisterReceiver(mBeamStatusReceiver);
         }

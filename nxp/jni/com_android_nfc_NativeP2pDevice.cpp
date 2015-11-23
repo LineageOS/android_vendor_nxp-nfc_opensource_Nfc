@@ -1,4 +1,3 @@
-
 /*
  * Copyright (C) 2010 The Android Open Source Project
  *
@@ -15,9 +14,8 @@
  * limitations under the License.
  */
 
-#include <errno.h>
-#include <malloc.h>
 #include <semaphore.h>
+#include <errno.h>
 #include <ScopedLocalRef.h>
 
 #include "com_android_nfc.h"
@@ -32,7 +30,7 @@ extern void nfc_jni_restart_discovery_locked(struct nfc_jni_native_data *nat);
  * Callbacks
  */
 static void nfc_jni_presence_check_callback(void* pContext, NFCSTATUS status)
-{   
+{
    struct nfc_jni_callback_data * pCallbackData = (struct nfc_jni_callback_data *) pContext;
    LOG_CALLBACK("nfc_jni_presence_check_callback", status);
 
@@ -40,28 +38,28 @@ static void nfc_jni_presence_check_callback(void* pContext, NFCSTATUS status)
    pCallbackData->status = status;
    sem_post(&pCallbackData->sem);
 }
- 
+
 static void nfc_jni_connect_callback(void *pContext,
-                                     phLibNfc_Handle /*hRemoteDev*/,
+                                     phLibNfc_Handle hRemoteDev,
                                      phLibNfc_sRemoteDevInformation_t *psRemoteDevInfo, NFCSTATUS status)
-{   
+{
    struct nfc_jni_callback_data * pCallbackData = (struct nfc_jni_callback_data *) pContext;
    phNfc_sData_t * psGeneralBytes = (phNfc_sData_t *)pCallbackData->pContext;
    LOG_CALLBACK("nfc_jni_connect_callback", status);
-   
+
    if(status == NFCSTATUS_SUCCESS)
    {
       psGeneralBytes->length = psRemoteDevInfo->RemoteDevInfo.NfcIP_Info.ATRInfo_Length;
       psGeneralBytes->buffer = (uint8_t*)malloc(psRemoteDevInfo->RemoteDevInfo.NfcIP_Info.ATRInfo_Length);
       psGeneralBytes->buffer = psRemoteDevInfo->RemoteDevInfo.NfcIP_Info.ATRInfo;
    }
-   
+
    /* Report the callback status and wake up the caller */
    pCallbackData->status = status;
    sem_post(&pCallbackData->sem);
 }
 
-static void nfc_jni_disconnect_callback(void *pContext, phLibNfc_Handle /*hRemoteDev*/, NFCSTATUS status)
+static void nfc_jni_disconnect_callback(void *pContext, phLibNfc_Handle hRemoteDev, NFCSTATUS status)
 {
    struct nfc_jni_callback_data * pCallbackData = (struct nfc_jni_callback_data *) pContext;
    LOG_CALLBACK("nfc_jni_disconnect_callback", status);
@@ -106,7 +104,7 @@ static void nfc_jni_send_callback(void *pContext, NFCSTATUS status)
  */
 
 static void nfc_jni_transceive_callback(void *pContext,
-  phLibNfc_Handle /*handle*/, phNfc_sData_t *pResBuffer, NFCSTATUS status)
+  phLibNfc_Handle handle, phNfc_sData_t *pResBuffer, NFCSTATUS status)
 {
    struct nfc_jni_callback_data * pCallbackData = (struct nfc_jni_callback_data *) pContext;
    LOG_CALLBACK("nfc_jni_transceive_callback", status);
@@ -180,7 +178,7 @@ static jboolean com_android_nfc_NativeP2pDevice_doConnect(JNIEnv *e, jobject o)
     generalBytes = e->NewByteArray(sGeneralBytes.length);
 
     e->SetByteArrayRegion(generalBytes, 0,
-                         sGeneralBytes.length, 
+                         sGeneralBytes.length,
                          (jbyte *)sGeneralBytes.buffer);
 
     e->SetObjectField(o, f, generalBytes);
@@ -293,7 +291,7 @@ static jbyteArray com_android_nfc_NativeP2pDevice_doTransceive(JNIEnv *e,
 
    buf = (uint8_t *)e->GetByteArrayElements(data, NULL);
    buflen = (uint32_t)e->GetArrayLength(data);
-   
+
    TRACE("Buffer Length = %d\n", buflen);
 
    transceive_info.sSendData.buffer = buf; //+ offset;
@@ -366,7 +364,7 @@ static jbyteArray com_android_nfc_NativeP2pDevice_doReceive(
    CONCURRENCY_LOCK();
 
    handle = nfc_jni_get_p2p_device_handle(e, o);
-   
+
    /* Create the local semaphore */
    if (!nfc_cb_data_init(&cb_data, (void*)data))
    {
@@ -381,7 +379,7 @@ static jbyteArray com_android_nfc_NativeP2pDevice_doReceive(
    if(status != NFCSTATUS_PENDING)
    {
       ALOGE("phLibNfc_RemoteDev_Receive() returned 0x%04x[%s]", status, nfc_jni_get_status_name(status));
-      goto clean_and_return;   
+      goto clean_and_return;
    }
    TRACE("phLibNfc_RemoteDev_Receive() returned 0x%04x[%s]", status, nfc_jni_get_status_name(status));
 
@@ -413,9 +411,9 @@ static jboolean com_android_nfc_NativeP2pDevice_doSend(
    phNfc_sData_t data;
    jboolean result = JNI_FALSE;
    struct nfc_jni_callback_data cb_data;
-   
+
    phLibNfc_Handle handle = nfc_jni_get_p2p_device_handle(e, o);
-   
+
    CONCURRENCY_LOCK();
 
    /* Create the local semaphore */
@@ -437,7 +435,7 @@ static jboolean com_android_nfc_NativeP2pDevice_doSend(
    if(status != NFCSTATUS_PENDING)
    {
       ALOGE("phLibNfc_RemoteDev_Send() returned 0x%04x[%s]", status, nfc_jni_get_status_name(status));
-      goto clean_and_return;   
+      goto clean_and_return;
    }
    TRACE("phLibNfc_RemoteDev_Send() returned 0x%04x[%s]", status, nfc_jni_get_status_name(status));
 

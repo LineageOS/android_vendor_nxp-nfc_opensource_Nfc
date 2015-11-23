@@ -14,6 +14,9 @@ class ScreenStateHelper {
     static final int SCREEN_STATE_ON_LOCKED = 2;
     static final int SCREEN_STATE_ON_UNLOCKED = 3;
 
+    static final int POWER_STATE_ON = 6;
+    static final int POWER_STATE_OFF = 7;
+
     private final PowerManager mPowerManager;
     private final KeyguardManager mKeyguardManager;
 

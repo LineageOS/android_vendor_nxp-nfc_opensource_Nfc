@@ -1,4 +1,4 @@
-/*
+ /*
  * Copyright (C) 2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +13,32 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/******************************************************************************
+ *
+ *  The original Work has been changed by NXP Semiconductors.
+ *
+ *  Copyright (C) 2015 NXP Semiconductors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
 
 package com.android.nfc.cardemulation;
 
 import android.app.ActivityManager;
 import android.content.ComponentName;
 import android.content.Context;
+import com.android.nfc.NfcService;
 import android.nfc.cardemulation.ApduServiceInfo;
 import android.nfc.cardemulation.CardEmulation;
 import android.util.Log;
@@ -40,7 +60,7 @@ import java.util.TreeMap;
 public class RegisteredAidCache {
     static final String TAG = "RegisteredAidCache";
 
-    static final boolean DBG = false;
+    static final boolean DBG = true;
 
     // mAidServices maps AIDs to services that have registered them.
     // It's a TreeMap in order to be able to quickly select subsets
@@ -54,6 +74,15 @@ public class RegisteredAidCache {
     // is authoritative for the current set of services and defaults.
     // It is only valid for the current user.
     final TreeMap<String, AidResolveInfo> mAidCache = new TreeMap<String, AidResolveInfo>();
+
+    // The power state for Host AIDs
+    int mHostAIDPowerState;
+
+    //FIXME: directly use the declaration in ApduServerInfo in framework
+    static final int POWER_STATE_SWITCH_ON = 1;
+    static final int POWER_STATE_SWITCH_OFF = 2;
+    static final int POWER_STATE_BATTERY_OFF = 4;
+    static final int POWER_STATE_ALL = POWER_STATE_SWITCH_ON | POWER_STATE_SWITCH_OFF |POWER_STATE_BATTERY_OFF ;
 
     // Represents a single AID registration of a service
     final class ServiceAidInfo {
@@ -125,15 +154,18 @@ public class RegisteredAidCache {
     boolean mNfcEnabled = false;
     boolean mSupportsPrefixes = false;
 
-    public RegisteredAidCache(Context context) {
+    public RegisteredAidCache(Context context, AidRoutingManager aidRoutingManager) {
         mContext = context;
-        mRoutingManager = new AidRoutingManager();
+        mRoutingManager = aidRoutingManager;
         mPreferredPaymentService = null;
         mPreferredForegroundService = null;
         mSupportsPrefixes = mRoutingManager.supportsAidPrefixRouting();
         if (mSupportsPrefixes) {
             if (DBG) Log.d(TAG, "Controller supports AID prefix routing");
         }
+        //TODO:
+        //AOSP needs Power Switch On Only for Host AIDs
+        mHostAIDPowerState = 0x40 | POWER_STATE_SWITCH_ON;
     }
 
     public AidResolveInfo resolveAid(String aid) {
@@ -186,6 +218,10 @@ public class RegisteredAidCache {
             if (DBG) Log.d(TAG, "Resolved to: " + resolveInfo);
             return resolveInfo;
         }
+    }
+
+    public ComponentName getPreferredPaymentService(){
+        return mPreferredPaymentService;
     }
 
     public boolean supportsAidPrefixRegistration() {
@@ -384,10 +420,16 @@ public class RegisteredAidCache {
                         continue;
                     }
                 }
+
                 ServiceAidInfo serviceAidInfo = new ServiceAidInfo();
-                serviceAidInfo.aid = aid.toUpperCase();
                 serviceAidInfo.service = service;
                 serviceAidInfo.category = service.getCategoryForAid(aid);
+                //NXP specific, Adding prefix (*) to all off host aid for prefix match.
+                if (mRoutingManager.getAidMatchingPlatform() == AidRoutingManager.AID_MATCHING_K
+                        && !service.isOnHost() && !aid.endsWith("*")) {
+                    aid = aid + "*";
+                }
+                serviceAidInfo.aid = aid.toUpperCase();
 
                 if (mAidServices.containsKey(serviceAidInfo.aid)) {
                     final ArrayList<ServiceAidInfo> serviceAidInfos =
@@ -530,7 +572,7 @@ public class RegisteredAidCache {
             if (DBG) Log.d(TAG, "Not updating routing table because NFC is off.");
             return;
         }
-        final HashMap<String, Boolean> routingEntries = Maps.newHashMap();
+        final HashMap<String, AidElement> routingEntries = Maps.newHashMap();
         // For each AID, find interested services
         for (Map.Entry<String, AidResolveInfo> aidEntry:
                 mAidCache.entrySet()) {
@@ -545,14 +587,73 @@ public class RegisteredAidCache {
             } else if (resolveInfo.defaultService != null) {
                 // There is a default service set, route to where that service resides -
                 // either on the host (HCE) or on an SE.
-                routingEntries.put(aid, resolveInfo.defaultService.isOnHost());
+                ApduServiceInfo.ESeInfo seInfo = resolveInfo.defaultService.getSEInfo();
+                boolean isDefaultPayment = resolveInfo.defaultService.getComponent().equals(mPreferredPaymentService);
+                boolean isForeground = resolveInfo.defaultService.getComponent().equals(mPreferredForegroundService);
+                boolean isOnHost = resolveInfo.defaultService.isOnHost();
+                boolean isPaymentAid = resolveInfo.category.equals(CardEmulation.CATEGORY_PAYMENT);
+                int route;
+                int VzwPowerstate =0 ;
+
+                /*get power state from the app : - N|L |F */
+                int powerstate = seInfo.getPowerState() & POWER_STATE_ALL;
+                if(powerstate == 0)
+                {
+                    powerstate |= POWER_STATE_SWITCH_ON;
+                }
+                int weight = AidElement.ROUTE_WIEGHT_OTHER;
+
+                /*If non default off host payment AID ,set screen state*/
+                if (!isPaymentAid && !isOnHost) {
+                    Log.d(TAG," set screen off enable for " + aid);
+                    powerstate |= (powerstate | 0x80);
+                }
+                if(!isPaymentAid || isOnHost)
+                {
+                    powerstate |= 0x40;
+                }
+
+                if (!isOnHost && NfcService.getInstance().isVzwFeatureEnabled()) {
+                    String plainAid = "";
+                    if(aid.endsWith("*"))
+                    {
+                        plainAid = aid.substring(0, aid.length()-1);
+                    } else {
+                        plainAid = aid;
+                    }
+                    if (mRoutingManager.GetVzwCache().isAidPresent(plainAid)) {
+                        if (mRoutingManager.GetVzwCache().IsAidAllowed(plainAid)){
+                            /*if vzw AID reset the previous screen state   */
+                            powerstate &= ~0x80;
+                            /*get the vzw power and screen state  :- SCREEN | L |F */
+                            VzwPowerstate = mRoutingManager.GetVzwCache().getPowerState(plainAid);
+                            /*merge power state with vzw power state */
+                            powerstate &= VzwPowerstate;
+                            /*merge the power state with vzw screen state*/
+                            powerstate |= (VzwPowerstate & 0x80);
+                            Log.d(TAG," vzw aid" + aid);
+                            Log.d(TAG," vzw merged power state" + powerstate);
+                        }
+                    }
+                }
+                route = isOnHost ? 0 : seInfo.getSeId();
+                if (isForeground) {
+                    weight += AidElement.ROUTE_WIEGHT_FOREGROUND;
+                }
+                if (isDefaultPayment && isPaymentAid) {
+                    weight += AidElement.ROUTE_WIEGHT_PAYMENT;
+                }
+                AidElement aidElem = new AidElement(aid, weight, route, powerstate);
+                routingEntries.put(aid, aidElem);
             } else if (resolveInfo.services.size() == 1) {
                 // Only one service, but not the default, must route to host
                 // to ask the user to choose one.
-                routingEntries.put(aid, true);
+                AidElement aidElem = new AidElement(aid, AidElement.ROUTE_WIEGHT_OTHER, 0, mHostAIDPowerState);
+                routingEntries.put(aid, aidElem);
             } else if (resolveInfo.services.size() > 1) {
                 // Multiple services, need to route to host to ask
-                routingEntries.put(aid, true);
+                AidElement aidElem = new AidElement(aid, AidElement.ROUTE_WIEGHT_OTHER, 0, mHostAIDPowerState);
+                routingEntries.put(aid, aidElem);
             }
         }
         mRoutingManager.configureRouting(routingEntries);
@@ -587,6 +688,12 @@ public class RegisteredAidCache {
         }
     }
 
+    public void onRoutingTableChanged() {
+        if (DBG) Log.d(TAG, "onRoutingTableChanged");
+        synchronized (mLock) {
+            generateAidCacheLocked();
+        }
+    }
     public void onNfcDisabled() {
         synchronized (mLock) {
             mNfcEnabled = false;

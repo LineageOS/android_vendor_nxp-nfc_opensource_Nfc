@@ -13,10 +13,28 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/******************************************************************************
+ *
+ *  The original Work has been changed by NXP Semiconductors.
+ *
+ *  Copyright (C) 2015 NXP Semiconductors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
 
-#include <errno.h>
-#include <malloc.h>
 #include <semaphore.h>
+#include <errno.h>
 
 #include "com_android_nfc.h"
 
@@ -33,7 +51,7 @@ static void nfc_jni_receive_callback(void* pContext, uint8_t ssap, NFCSTATUS sta
 
    if(status == NFCSTATUS_SUCCESS)
    {
-      pCallbackData->pContext = (void*)(uintptr_t)ssap;
+      pCallbackData->pContext = (void*)ssap;
       TRACE("RECEIVE UI_FRAME FROM SAP %d OK \n", ssap);
    }
 
@@ -64,7 +82,7 @@ static jboolean com_android_nfc_NativeLlcpConnectionlessSocket_doSendTo(JNIEnv *
    phNfc_sData_t sSendBuffer = {NULL, 0};
    struct nfc_jni_callback_data cb_data;
    jboolean result = JNI_FALSE;
-   
+
    /* Retrieve handles */
    hRemoteDevice = nfc_jni_get_p2p_device_handle(e,o);
    hLlcpSocket = nfc_jni_get_nfc_socket_handle(e,o);
@@ -76,7 +94,7 @@ static jboolean com_android_nfc_NativeLlcpConnectionlessSocket_doSendTo(JNIEnv *
    }
 
    sSendBuffer.buffer = (uint8_t*)e->GetByteArrayElements(data, NULL);
-   sSendBuffer.length = (uint32_t)e->GetArrayLength(data);   
+   sSendBuffer.length = (uint32_t)e->GetArrayLength(data);
 
    TRACE("phLibNfc_Llcp_SendTo()");
    REENTRANCE_LOCK();
@@ -91,9 +109,9 @@ static jboolean com_android_nfc_NativeLlcpConnectionlessSocket_doSendTo(JNIEnv *
    {
       ALOGE("phLibNfc_Llcp_SendTo() returned 0x%04x[%s]", ret, nfc_jni_get_status_name(ret));
       goto clean_and_return;
-   } 
+   }
    TRACE("phLibNfc_Llcp_SendTo() returned 0x%04x[%s]", ret, nfc_jni_get_status_name(ret));
-   
+
    /* Wait for callback response */
    if(sem_wait(&cb_data.sem))
    {
@@ -150,7 +168,7 @@ static jobject com_android_nfc_NativeLlcpConnectionlessSocket_doReceiveFrom(JNIE
    {
       ALOGE("Get Object class error");
       goto clean_and_return;
-   } 
+   }
 
    /* Retrieve handles */
    hRemoteDevice = nfc_jni_get_p2p_device_handle(e,o);
@@ -171,7 +189,7 @@ static jobject com_android_nfc_NativeLlcpConnectionlessSocket_doReceiveFrom(JNIE
    {
       ALOGE("phLibNfc_Llcp_RecvFrom() returned 0x%04x[%s]", ret, nfc_jni_get_status_name(ret));
       goto clean_and_return;
-   } 
+   }
    TRACE("phLibNfc_Llcp_RecvFrom() returned 0x%04x[%s]", ret, nfc_jni_get_status_name(ret));
 
    /* Wait for callback response */
@@ -186,7 +204,7 @@ static jobject com_android_nfc_NativeLlcpConnectionlessSocket_doReceiveFrom(JNIE
        goto clean_and_return;
    }
 
-   ssap = (uintptr_t)cb_data.pContext;
+   ssap = (uint32_t)cb_data.pContext;
    TRACE("Data Received From SSAP = %d\n, length = %d", ssap, sReceiveBuffer.length);
 
    /* Set Llcp Packet remote SAP */
@@ -210,7 +228,7 @@ static jboolean com_android_nfc_NativeLlcpConnectionlessSocket_doClose(JNIEnv *e
    NFCSTATUS ret;
    phLibNfc_Handle hLlcpSocket;
    TRACE("Close Connectionless socket");
-   
+
    /* Retrieve socket handle */
    hLlcpSocket = nfc_jni_get_nfc_socket_handle(e,o);
 
@@ -237,9 +255,9 @@ static jboolean com_android_nfc_NativeLlcpConnectionlessSocket_doClose(JNIEnv *e
 static JNINativeMethod gMethods[] =
 {
    {"doSendTo", "(I[B)Z", (void *)com_android_nfc_NativeLlcpConnectionlessSocket_doSendTo},
-      
+
    {"doReceiveFrom", "(I)Lcom/android/nfc/LlcpPacket;", (void *)com_android_nfc_NativeLlcpConnectionlessSocket_doReceiveFrom},
-      
+
    {"doClose", "()Z", (void *)com_android_nfc_NativeLlcpConnectionlessSocket_doClose},
 };
 

@@ -13,6 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/******************************************************************************
+ *
+ *  The original Work has been changed by NXP Semiconductors.
+ *
+ *  Copyright (C) 2015 NXP Semiconductors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
 
 #include <stdlib.h>
 
@@ -25,7 +44,7 @@
 /*
  * JNI Initialization
  */
-jint JNI_OnLoad(JavaVM *jvm, void* /*reserved*/)
+jint JNI_OnLoad(JavaVM *jvm, void *reserved)
 {
    JNIEnv *e;
 
@@ -48,6 +67,8 @@ jint JNI_OnLoad(JavaVM *jvm, void* /*reserved*/)
    if (android::register_com_android_nfc_NativeLlcpConnectionlessSocket(e) == -1)
       return JNI_ERR;
    if (android::register_com_android_nfc_NativeLlcpServiceSocket(e) == -1)
+      return JNI_ERR;
+   if (android::register_com_android_nfc_NativeNfcSecureElement(e) == -1)
       return JNI_ERR;
 
    return JNI_VERSION_1_6;
@@ -154,11 +175,11 @@ struct nfc_jni_native_data* nfc_jni_get_nat(JNIEnv *e, jobject o)
 {
    /* Retrieve native structure address */
    ScopedLocalRef<jclass> c(e, e->GetObjectClass(o));
-   jfieldID f = e->GetFieldID(c.get(), "mNative", "J");
-   return (struct nfc_jni_native_data*) e->GetLongField(o, f);
+   jfieldID f = e->GetFieldID(c.get(), "mNative", "I");
+   return (struct nfc_jni_native_data*) e->GetIntField(o, f);
 }
 
-struct nfc_jni_native_data* nfc_jni_get_nat_ext(JNIEnv*)
+struct nfc_jni_native_data* nfc_jni_get_nat_ext(JNIEnv *e)
 {
    return exported_nat;
 }

@@ -23,7 +23,6 @@
 
 #include <cutils/log.h>
 #include <errno.h>
-#include <string.h>
 
 /*******************************************************************************
 **
@@ -135,5 +134,3 @@ pthread_mutex_t* Mutex::nativeHandle ()
 {
     return &mMutex;
 }
-
-

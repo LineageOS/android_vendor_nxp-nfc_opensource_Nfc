@@ -13,17 +13,36 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/******************************************************************************
+ *
+ *  The original Work has been changed by NXP Semiconductors.
+ *
+ *  Copyright (C) 2015 NXP Semiconductors
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ ******************************************************************************/
 
 /*
  *  Import and export general routing data using a XML file.
  */
 #include "OverrideLog.h"
 #include "RouteDataSet.h"
-#include "libxml/xmlmemory.h"
+//#include "libxml/xmlmemory.h"
 #include <errno.h>
 #include <sys/stat.h>
 
-extern char bcm_nfc_location[];
+extern char bcm_nfc_location_jni[];
 
 
 /*******************************************************************************
@@ -122,7 +141,7 @@ bool RouteDataSet::initialize ()
     ALOGD ("%s: enter", fn);
     //check that the libxml2 version in use is compatible
     //with the version the software has been compiled with
-    LIBXML_TEST_VERSION
+    //LIBXML_TEST_VERSION
     ALOGD ("%s: exit; return=true", fn);
     return true;
 }
@@ -167,6 +186,7 @@ bool RouteDataSet::import ()
     static const char fn [] = "RouteDataSet::import";
     ALOGD ("%s: enter", fn);
     bool retval = false;
+#if 0
     xmlDocPtr doc;
     xmlNodePtr node1;
     std::string strFilename(bcm_nfc_location);
@@ -232,6 +252,7 @@ TheEnd:
     xmlFreeDoc (doc);
     xmlCleanupParser ();
     ALOGD ("%s: exit; return=%u", fn, retval);
+#endif
     return retval;
 }
 
@@ -252,7 +273,7 @@ bool RouteDataSet::saveToFile (const char* routesXml)
     FILE* fh = NULL;
     size_t actualWritten = 0;
     bool retval = false;
-    std::string filename (bcm_nfc_location);
+    std::string filename (bcm_nfc_location_jni);
     int stat = 0;
 
     filename.append (sConfigFile);
@@ -295,7 +316,7 @@ bool RouteDataSet::loadFromFile (std::string& routesXml)
     FILE* fh = NULL;
     size_t actual = 0;
     char buffer [1024];
-    std::string filename (bcm_nfc_location);
+    std::string filename (bcm_nfc_location_jni);
 
     filename.append (sConfigFile);
     fh = fopen (filename.c_str (), "r");
@@ -318,6 +339,7 @@ bool RouteDataSet::loadFromFile (std::string& routesXml)
 }
 
 
+#if 0
 
 
 /*******************************************************************************
@@ -460,7 +482,7 @@ void RouteDataSet::importTechnologyRoute (xmlNodePtr& element, Database& databas
     }
     database.push_back (data);
 }
-
+#endif
 
 /*******************************************************************************
 **
@@ -474,7 +496,7 @@ void RouteDataSet::importTechnologyRoute (xmlNodePtr& element, Database& databas
 bool RouteDataSet::deleteFile ()
 {
     static const char fn [] = "RouteDataSet::deleteFile";
-    std::string filename (bcm_nfc_location);
+    std::string filename (bcm_nfc_location_jni);
     filename.append (sConfigFile);
     int stat = remove (filename.c_str());
     ALOGD ("%s: exit %u", fn, stat==0);

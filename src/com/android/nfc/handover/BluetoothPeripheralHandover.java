@@ -296,7 +296,6 @@ public class BluetoothPeripheralHandover implements BluetoothProfile.ServiceList
     void nextStepConnect() {
         switch (mState) {
             case STATE_INIT_COMPLETE:
-
                 if (mDevice.getBondState() != BluetoothDevice.BOND_BONDED) {
                     requestPairConfirmation();
                     mState = STATE_WAITING_FOR_BOND_CONFIRMATION;
@@ -363,7 +362,7 @@ public class BluetoothPeripheralHandover implements BluetoothProfile.ServiceList
                         mDevice.setAlias(mName);
                         complete(true);
                     } else {
-                        toast (getToastString(R.string.connect_peripheral_failed));
+                        toast(getToastString(R.string.connected_peripheral));
                         complete(false);
                     }
                 } else {
