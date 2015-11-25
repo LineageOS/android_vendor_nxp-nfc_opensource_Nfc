@@ -61,10 +61,10 @@ public class NfceeAccessControl {
     static final String TAG = "NfceeAccess";
     static final boolean DBG = true;
 
-    public static final String NFCEE_ACCESS_PATH = "/etc/nfcee_access.xml";
+    public static final String NFCEE_ACCESS_PATH = "/etc/nqnfcee_access.xml";
 
     /**
-     * Map of signatures to valid packages names, as read from nfcee_access.xml.
+     * Map of signatures to valid packages names, as read from nqnfcee_access.xml.
      * An empty list of package names indicates that any package
      * with this signature is allowed.
      */
@@ -191,7 +191,7 @@ public class NfceeAccessControl {
     }
 
     /**
-     * Parse nfcee_access.xml, populate mNfceeAccess
+     * Parse nqnfcee_access.xml, populate mNfceeAccess
      * Policy is to ignore unexpected XML elements and continue processing,
      * except for obvious errors within a <signer> group since they might cause
      * package names to by ignored and therefore wildcard access granted
