@@ -42,10 +42,10 @@ public class NfcSeAccessControl {
     static final String TAG = "NfcSeAccess";
     static final boolean DBG = true;
 
-    public static final String NFCSE_ACCESS_PATH = "/etc/nfcse_access.xml";
+    public static final String NFCSE_ACCESS_PATH = "/etc/nqnfcse_access.xml";
 
     /**
-     * Map of signatures to valid packages names, as read from nfcse_access.xml.
+     * Map of signatures to valid packages names, as read from nqnfcse_access.xml.
      * An empty list of package names indicates that any package
      * with this signature is allowed.
      */
