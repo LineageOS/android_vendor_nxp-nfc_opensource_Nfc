@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
  * Copyright (C) 2015 NXP Semiconductors
@@ -31,6 +31,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.nfc.INfcCardEmulation;
 import android.nfc.cardemulation.AidGroup;
+import android.nfc.cardemulation.NQAidGroup;
 import android.nfc.cardemulation.ApduServiceInfo;
 import android.nfc.cardemulation.NQApduServiceInfo;
 import android.nfc.cardemulation.CardEmulation;
@@ -348,7 +349,7 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
                 return false;
             }
             return mServiceCache.registerAidGroupForService(userId, Binder.getCallingUid(), service,
-                    aidGroup);
+                    new NQAidGroup(aidGroup));
         }
 
         @Override
