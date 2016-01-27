@@ -873,13 +873,13 @@ static jint nativeNfcTag_doConnect (JNIEnv*, jobject, jint targetHandle)
         goto TheEnd;
     }
 #if(NXP_EXTNS == TRUE)
+    sCurrentConnectedHandle = targetHandle;
     if(natTag.mTechLibNfcTypes[i] == NFC_PROTOCOL_T3BT)
     {
         goto TheEnd;
     }
 #endif
     sCurrentConnectedTargetType = natTag.mTechList[i];
-    sCurrentConnectedHandle = targetHandle;
     if (natTag.mTechLibNfcTypes[i] != NFC_PROTOCOL_ISO_DEP)
     {
         ALOGD ("%s() Nfc type = %d, do nothing for non ISO_DEP", __FUNCTION__, natTag.mTechLibNfcTypes[i]);
@@ -945,7 +945,9 @@ static int reSelect (tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded)
 
     tNFA_STATUS status;
     int rVal = 1;
-
+#if(NFC_NXP_NON_STD_CARD == TRUE)
+    unsigned char retry_cnt = 1;
+#endif
     do
     {
         //if tag has shutdown, abort this method
@@ -955,7 +957,10 @@ static int reSelect (tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded)
             rVal = STATUS_CODE_TARGET_LOST;
             break;
         }
-
+#if(NFC_NXP_NON_STD_CARD == TRUE)
+        if(!retry_cnt && (natTag.mTechLibNfcTypes[handle] != NFA_PROTOCOL_MIFARE))
+            NfcTag::getInstance ().mCashbeeDetected = true;
+#endif
         {
             SyncEventGuard g (sReconnectEvent);
             gIsTagDeactivating = true;
@@ -1024,7 +1029,13 @@ static int reSelect (tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded)
             {
                 ALOGD ("%s: tag is not in sleep", __FUNCTION__);
                 rVal = STATUS_CODE_TARGET_LOST;
-                break;
+#if(NFC_NXP_NON_STD_CARD == TRUE)
+                if(!retry_cnt)
+#endif
+                    break;
+#if(NFC_NXP_NON_STD_CARD == TRUE)
+                else continue;
+#endif
             }
         }
         else
@@ -1065,10 +1076,19 @@ static int reSelect (tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded)
             if (sReconnectEvent.wait (1000) == false) //if timeout occured
             {
                 ALOGE ("%s: timeout waiting for select", __FUNCTION__);
-                status = NFA_Deactivate (FALSE);
-                if (status != NFA_STATUS_OK)
-                    ALOGE ("%s: deactivate failed; error=0x%X", __FUNCTION__, status);
+#if(NXP_EXTNS == TRUE)
+                if (!(NfcTag::getInstance ().isCashBeeActivated() == true || NfcTag::getInstance ().isEzLinkTagActivated() == true
+        #if(NFC_NXP_NON_STD_CARD == TRUE)
+                   || sNonNciCard_t.chinaTransp_Card == true
+        #endif
+                ))
+                {
+                    status = NFA_Deactivate (FALSE);
+                    if (status != NFA_STATUS_OK)
+                        ALOGE ("%s: deactivate failed; error=0x%X", __FUNCTION__, status);
+                }
                 break;
+#endif
             }
         }
 
@@ -1077,23 +1097,39 @@ static int reSelect (tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded)
         {
             ALOGD("%s: tag is not active", __FUNCTION__);
             rVal = STATUS_CODE_TARGET_LOST;
+#if(NFC_NXP_NON_STD_CARD == TRUE)
+            if(!retry_cnt)
+#endif
             break;
         }
         if(NfcTag::getInstance ().isEzLinkTagActivated() == true)
         {
             NfcTag::getInstance ().mEzLinkTypeTag = false;
         }
+#if(NFC_NXP_NON_STD_CARD == TRUE)
+        if(NfcTag::getInstance ().isCashBeeActivated() == true)
+        {
+            NfcTag::getInstance ().mCashbeeDetected = false;
+        }
+#endif
         if (sConnectOk)
         {
             rVal = 0;   // success
             sCurrentRfInterface = rfInterface;
+#if(NFC_NXP_NON_STD_CARD == TRUE)
+            break;
+#endif
         }
         else
         {
             rVal = 1;
         }
-    } while (0);
-
+    }
+#if(NFC_NXP_NON_STD_CARD == TRUE)
+    while (retry_cnt--);
+#else
+    while(0);
+#endif
     setReconnectState(false);
     NFA_SetReconnectState(FALSE);
     sConnectWaitingForComplete = JNI_FALSE;
@@ -1943,29 +1979,6 @@ static jboolean nativeNfcTag_doPresenceCheck (JNIEnv*, jobject)
     {
         sSwitchBackTimer.kill ();
     }
-
-    // Special case for Kovio.  The deactivation would have already occurred
-    // but was ignored so that normal tag opertions could complete.  Now we
-    // want to process as if the deactivate just happened.
-    if (NfcTag::getInstance ().mTechList [handle] == TARGET_TYPE_KOVIO_BARCODE)
-    {
-        ALOGD ("%s: Kovio, force deactivate handling", __FUNCTION__);
-        tNFA_DEACTIVATED deactivated = {NFA_DEACTIVATE_TYPE_IDLE};
-        {
-            SyncEventGuard g (gDeactivatedEvent);
-            gActivated = false; //guard this variable from multi-threaded access
-            gDeactivatedEvent.notifyOne ();
-        }
-
-        NfcTag::getInstance().setDeactivationState (deactivated);
-        nativeNfcTag_resetPresenceCheck();
-        NfcTag::getInstance().connectionEventHandler (NFA_DEACTIVATED_EVT, NULL);
-        nativeNfcTag_abortWaits();
-        NfcTag::getInstance().abort ();
-
-        return JNI_FALSE;
-    }
-
     if (nfcManager_isNfcActive() == false)
     {
         ALOGD ("%s: NFC is no longer active.", __FUNCTION__);
@@ -1984,6 +1997,39 @@ static jboolean nativeNfcTag_doPresenceCheck (JNIEnv*, jobject)
     {
         ALOGD ("%s: tag already deactivated", __FUNCTION__);
         return JNI_FALSE;
+    }
+
+    /*Presence check for Kovio - RF Deactive command with type Discovery*/
+    ALOGD ("%s: handle=%d", __FUNCTION__, handle);
+    if (NfcTag::getInstance ().mTechList [handle] == TARGET_TYPE_KOVIO_BARCODE)
+    {
+        SyncEventGuard guard (sPresenceCheckEvent);
+        status = NFA_RwPresenceCheck (NfcTag::getInstance().getPresenceCheckAlgorithm());
+        if (status == NFA_STATUS_OK)
+        {
+            sPresenceCheckEvent.wait ();
+            isPresent = sIsTagPresent ? JNI_TRUE : JNI_FALSE;
+        }
+        if (isPresent == JNI_FALSE)
+            ALOGD ("%s: tag absent", __FUNCTION__);
+        return isPresent;
+#if 0
+        ALOGD ("%s: Kovio, force deactivate handling", __FUNCTION__);
+        tNFA_DEACTIVATED deactivated = {NFA_DEACTIVATE_TYPE_IDLE};
+        {
+            SyncEventGuard g (gDeactivatedEvent);
+            gActivated = false; //guard this variable from multi-threaded access
+            gDeactivatedEvent.notifyOne ();
+        }
+
+        NfcTag::getInstance().setDeactivationState (deactivated);
+        nativeNfcTag_resetPresenceCheck();
+        NfcTag::getInstance().connectionEventHandler (NFA_DEACTIVATED_EVT, NULL);
+        nativeNfcTag_abortWaits();
+        NfcTag::getInstance().abort ();
+
+        return JNI_FALSE;
+#endif
     }
 
     /*
@@ -2113,7 +2159,7 @@ static jboolean nativeNfcTag_doPresenceCheck (JNIEnv*, jobject)
 **
 ** Description:     Can tag be formatted to store NDEF message?
 **                  e: JVM environment.
-**                  o: Java object.�
+**                  o: Java object.
 **                  libNfcType: Type of tag.
 **                  uidBytes: Tag's unique ID.
 **                  pollBytes: Data from activation.
@@ -2275,7 +2321,7 @@ static jboolean nativeNfcTag_doNdefFormat (JNIEnv *e, jobject o, jbyteArray)
 
         sem_init (&sFormatSem, 0, 0);
 
-        status |= nativeNfcTag_doReconnect (e, o);
+        status = nativeNfcTag_doReconnect (e, o);
         ALOGD ("Format with Second Key");
         status |= EXTNS_MfcFormatTag(key2,sizeof(key2));
         if (status == NFA_STATUS_OK)

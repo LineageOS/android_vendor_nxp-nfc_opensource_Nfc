@@ -41,7 +41,7 @@ import android.util.SparseArray;
 import com.android.nfc.NfcService;
 import com.android.nfc.cardemulation.Nfcid2RoutingCache;
 
-import android.nfc.cardemulation.ApduServiceInfo;
+import android.nfc.cardemulation.NQApduServiceInfo;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -65,7 +65,7 @@ public class Nfcid2RoutingManager {
     // For Nexus devices, just a static route to the eSE
     // OEMs/Carriers could manually map off-host AIDs
     // to the correct eSE/UICC based on state they keep.
-//    static final int DEFAULT_OFFHOST_ROUTE = ApduServiceInfo.SECURE_ELEMENT_ROUTE_UICC;
+//    static final int DEFAULT_OFFHOST_ROUTE = NQApduServiceInfo.SECURE_ELEMENT_ROUTE_UICC;
 
     final Object mLock = new Object();
 

@@ -148,6 +148,7 @@ public class NfcService implements DeviceHostListener {
     private static final String NFC_PERM_ERROR = "NFC permission required";
 
     public static final String PREF = "NfcServicePrefs";
+    public static final String NXP_PREF = "NfcServiceNxpPrefs";
 
     static final String PREF_NFC_ON = "nfc_on";
     static final boolean NFC_ON_DEFAULT = true;
@@ -196,8 +197,8 @@ public class NfcService implements DeviceHostListener {
     static final boolean SE_BROADCASTS_WITH_HCE = true;
 
     private static final String PREF_SECURE_ELEMENT_ID = "secure_element_id";
-    public static final int ROUTE_LOC_MASK=3;
-    public static final int TECH_TYPE_MASK=5;
+    public static final int ROUTE_LOC_MASK=5;
+    public static final int TECH_TYPE_MASK=7;
 
     static final int MSG_NDEF_TAG = 0;
     static final int MSG_CARD_EMULATION = 1;
@@ -306,10 +307,6 @@ public class NfcService implements DeviceHostListener {
     public static final int SOUND_START = 0;
     public static final int SOUND_END = 1;
     public static final int SOUND_ERROR = 2;
-
-    // for setting VEN_CFG
-    public static final int VEN_CFG_NFC_ON_POWER_ON = 3;
-    public static final int VEN_CFG_NFC_OFF_POWER_OFF = 2;
 
     //ETSI Reader Events
     public static final int ETSI_READER_REQUESTED   = 0;
@@ -432,7 +429,9 @@ public class NfcService implements DeviceHostListener {
     Context mContext;
     private DeviceHost mDeviceHost;
     private SharedPreferences mPrefs;
+    private SharedPreferences mNxpPrefs;
     private SharedPreferences.Editor mPrefsEditor;
+    private SharedPreferences.Editor mNxpPrefsEditor;
     private PowerManager.WakeLock mRoutingWakeLock;
     private PowerManager.WakeLock mEeWakeLock;
 
@@ -818,6 +817,8 @@ public class NfcService implements DeviceHostListener {
 
         mPrefs = mContext.getSharedPreferences(PREF, Context.MODE_PRIVATE);
         mPrefsEditor = mPrefs.edit();
+        mNxpPrefs = mContext.getSharedPreferences(NXP_PREF, Context.MODE_PRIVATE);
+        mNxpPrefsEditor = mNxpPrefs.edit();
 
         mState = NfcAdapter.STATE_OFF;
         mIsNdefPushEnabled = mPrefs.getBoolean(PREF_NDEF_PUSH_ON, NDEF_PUSH_ON_DEFAULT);
@@ -1143,11 +1144,11 @@ public class NfcService implements DeviceHostListener {
             }
 
             mNfcSecureElementState =
-                    mPrefs.getBoolean(PREF_SECURE_ELEMENT_ON, SECURE_ELEMENT_ON_DEFAULT);
+                    mNxpPrefs.getBoolean(PREF_SECURE_ELEMENT_ON, SECURE_ELEMENT_ON_DEFAULT);
 
             if (mNfcSecureElementState) {
                 int secureElementId =
-                        mPrefs.getInt(PREF_SECURE_ELEMENT_ID, SECURE_ELEMENT_ID_DEFAULT);
+                        mNxpPrefs.getInt(PREF_SECURE_ELEMENT_ID, SECURE_ELEMENT_ID_DEFAULT);
 
                 if (Se_list != null) {
 
@@ -1530,14 +1531,13 @@ public class NfcService implements DeviceHostListener {
             if(!mPowerShutDown)
             {
                 Log.i(TAG, "Disabling NFC Disabling ESE/UICC");
-                mDeviceHost.doSetScreenOrPowerState(ScreenStateHelper.POWER_STATE_OFF);
                 //Since only Nfc is getting disabled so disable CE from EE.
+                mDeviceHost.doSetScreenOrPowerState(ScreenStateHelper.POWER_STATE_ON);
                 mDeviceHost.doDeselectSecureElement(UICC_ID_TYPE);
                 mDeviceHost.doDeselectSecureElement(SMART_MX_ID_TYPE);
             } else {
                 Log.i(TAG, "Power off : Disabling NFC Disabling ESE/UICC");
                 mPowerShutDown = false;
-                mDeviceHost.doSetScreenOrPowerState(ScreenStateHelper.POWER_STATE_ON);
                 mCardEmulationManager.onPreferredForegroundServiceChanged(null);
             }
 
@@ -1965,9 +1965,9 @@ public class NfcService implements DeviceHostListener {
             mSelectedSeId = 0;
 
             /* store preference */
-            mPrefsEditor.putBoolean(PREF_SECURE_ELEMENT_ON, false);
-            mPrefsEditor.putInt(PREF_SECURE_ELEMENT_ID, 0);
-            mPrefsEditor.apply();
+            mNxpPrefsEditor.putBoolean(PREF_SECURE_ELEMENT_ON, false);
+            mNxpPrefsEditor.putInt(PREF_SECURE_ELEMENT_ID, 0);
+            mNxpPrefsEditor.apply();
 
             return ErrorCodes.SUCCESS;
         }
@@ -1981,9 +1981,9 @@ public class NfcService implements DeviceHostListener {
             NfcPermissions.enforceAdminPermissions(mContext);
             /* store */
             Log.d(TAG, "SE Preference stored");
-            mPrefsEditor.putBoolean(PREF_SECURE_ELEMENT_ON, true);
-            mPrefsEditor.putInt(PREF_SECURE_ELEMENT_ID, seId);
-            mPrefsEditor.apply();
+            mNxpPrefsEditor.putBoolean(PREF_SECURE_ELEMENT_ON, true);
+            mNxpPrefsEditor.putInt(PREF_SECURE_ELEMENT_ID, seId);
+            mNxpPrefsEditor.apply();
         }
 
         @Override
@@ -2022,9 +2022,9 @@ public class NfcService implements DeviceHostListener {
                 }
             }
             /* store */
-            mPrefsEditor.putBoolean(PREF_SECURE_ELEMENT_ON, true);
-            mPrefsEditor.putInt(PREF_SECURE_ELEMENT_ID, mSelectedSeId);
-            mPrefsEditor.apply();
+            mNxpPrefsEditor.putBoolean(PREF_SECURE_ELEMENT_ON, true);
+            mNxpPrefsEditor.putInt(PREF_SECURE_ELEMENT_ID, mSelectedSeId);
+            mNxpPrefsEditor.apply();
 
             mNfcSecureElementState = true;
 
@@ -2037,9 +2037,9 @@ public class NfcService implements DeviceHostListener {
             int protoRouteEntry = 0;
             protoRouteEntry=((routeLoc & 0x03)== 0x01) ? (0x01 << 3) : (((routeLoc & 0x03) == 0x02) ? (0x01 << 4) : 0x00) ;
             protoRouteEntry |= ((fullPower ? 0x01 : 0) | (lowPower ? 0x01 << 1 :0 ) | (noPower ? 0x01 << 2 :0) );
-            mPrefsEditor = mPrefs.edit();
-            mPrefsEditor.putInt("PREF_MIFARE_DESFIRE_PROTO_ROUTE_ID", protoRouteEntry);
-            mPrefsEditor.commit();
+            mNxpPrefsEditor = mNxpPrefs.edit();
+            mNxpPrefsEditor.putInt("PREF_MIFARE_DESFIRE_PROTO_ROUTE_ID", protoRouteEntry);
+            mNxpPrefsEditor.commit();
             Log.i(TAG,"MifareDesfireRouteSet function in");
             commitRouting();
         }
@@ -2053,9 +2053,9 @@ public class NfcService implements DeviceHostListener {
                 protoRouteEntry |= ((fullPower ? 0x01 : 0) | (lowPower ? 0x01 << 1 :0 ) | (noPower ? 0x01 << 2 :0));
                 if(GetDefaultRouteLoc() != routeLoc)
                 {
-                    mPrefsEditor = mPrefs.edit();
-                    mPrefsEditor.putInt("PREF_SET_DEFAULT_ROUTE_ID", protoRouteEntry );
-                    mPrefsEditor.commit();
+                    mNxpPrefsEditor = mNxpPrefs.edit();
+                    mNxpPrefsEditor.putInt("PREF_SET_DEFAULT_ROUTE_ID", protoRouteEntry );
+                    mNxpPrefsEditor.commit();
                     mIsRouteForced = true;
                     if (mIsHceCapable) {
                         mAidRoutingManager.onNfccRoutingTableCleared();
@@ -2079,9 +2079,9 @@ public class NfcService implements DeviceHostListener {
             techRouteEntry=((routeLoc & 0x03)== 0x01) ? (0x01 << 3) : (((routeLoc & 0x03) == 0x02) ? (0x01 << 4) : 0x00) ;
             techRouteEntry |= ((fullPower ? 0x01 : 0) | (lowPower ? 0x01 << 1 :0 ) | (noPower ? 0x01 << 2 :0) );
             techRouteEntry |=0x20;
-            mPrefsEditor = mPrefs.edit();
-            mPrefsEditor.putInt("PREF_MIFARE_CLT_ROUTE_ID", techRouteEntry);
-            mPrefsEditor.commit();
+            mNxpPrefsEditor = mNxpPrefs.edit();
+            mNxpPrefsEditor.putInt("PREF_MIFARE_CLT_ROUTE_ID", techRouteEntry);
+            mNxpPrefsEditor.commit();
             commitRouting();
         }
         @Override
@@ -2100,6 +2100,12 @@ public class NfcService implements DeviceHostListener {
         public Map<String,Integer> getServicesAidCacheSize(int userId, String category){
             return mCardEmulationManager.getServicesAidCacheSize(userId, category);
         }
+
+        @Override
+        public int updateServiceState(int userId , Map serviceState) {
+            return mCardEmulationManager.updateServiceState(userId ,serviceState);
+        }
+
         @Override
         public int getSeInterface(int type) throws RemoteException {
             return mDeviceHost.doGetSeInterface(type);
@@ -3137,7 +3143,7 @@ public class NfcService implements DeviceHostListener {
             } else if(cmdType.equals("enableserver")) {
                 if(serviceName.equals(null))
                     return false;
-                mP2pLinkManager.enableExtDtaSnepServer(serviceName, serviceSap, miu, rwSize);
+                mP2pLinkManager.enableExtDtaSnepServer(serviceName, serviceSap, miu, rwSize,testCaseId);
             } else if(cmdType.equals("disableserver")) {
                 mP2pLinkManager.disableExtDtaSnepServer();
             } else if(cmdType.equals("enableclient")) {
@@ -3848,9 +3854,9 @@ public class NfcService implements DeviceHostListener {
         if(mIsRoutingTableDirty) {
             mIsRoutingTableDirty = false;
             //TODO: Take this logic from L_OSP_EXT [PN547C2]
-            int protoRoute = mPrefs.getInt("PREF_MIFARE_DESFIRE_PROTO_ROUTE_ID", GetDefaultMifareDesfireRouteEntry());
-            int defaultRoute=mPrefs.getInt("PREF_SET_DEFAULT_ROUTE_ID", GetDefaultRouteEntry());
-            int techRoute=mPrefs.getInt("PREF_MIFARE_CLT_ROUTE_ID", GetDefaultMifateCLTRouteEntry());
+            int protoRoute = mNxpPrefs.getInt("PREF_MIFARE_DESFIRE_PROTO_ROUTE_ID", GetDefaultMifareDesfireRouteEntry());
+            int defaultRoute=mNxpPrefs.getInt("PREF_SET_DEFAULT_ROUTE_ID", GetDefaultRouteEntry());
+            int techRoute=mNxpPrefs.getInt("PREF_MIFARE_CLT_ROUTE_ID", GetDefaultMifateCLTRouteEntry());
             Log.d(TAG, "Set default Route Entry");
             setDefaultRoute(defaultRoute, protoRoute, techRoute);
         }
@@ -3966,11 +3972,12 @@ public class NfcService implements DeviceHostListener {
 
     public void notifyRoutingTableFull()
     {
+        mNxpPrefsEditor = mNxpPrefs.edit();
+        mNxpPrefsEditor.putInt("PREF_SET_AID_ROUTING_TABLE_FULL",0x01);
+        mNxpPrefsEditor.commit();
         //broadcast Aid Routing Table Full intent to the user
-        String ACTION_ROUTING_TABLE_FULL =
-                "com.nxp.action.AID_ROUTING_TABLE_FULL";
         Intent aidTableFull = new Intent();
-        aidTableFull.setAction(ACTION_ROUTING_TABLE_FULL);
+        aidTableFull.setAction(NxpConstants.ACTION_ROUTING_TABLE_FULL);
         if (DBG) {
             Log.d(TAG, "notify aid routing table full to the user");
         }
@@ -3981,11 +3988,11 @@ public class NfcService implements DeviceHostListener {
      */
     public void setDefaultAidRouteLoc( int defaultAidRouteEntry)
     {
-        mPrefsEditor = mPrefs.edit();
+        mNxpPrefsEditor = mNxpPrefs.edit();
         Log.d(TAG, "writing to preferences setDefaultAidRouteLoc  :" + defaultAidRouteEntry);
-        mPrefsEditor.putInt("PREF_SET_DEFAULT_ROUTE_ID", (defaultAidRouteEntry << 0x03 )| ROUTE_SWITCH_ON );
-        mPrefsEditor.commit();
-        int defaultRoute=mPrefs.getInt("PREF_SET_DEFAULT_ROUTE_ID",0xFF);
+        mNxpPrefsEditor.putInt("PREF_SET_DEFAULT_ROUTE_ID", ((defaultAidRouteEntry << ROUTE_LOC_MASK)| (mDeviceHost.getDefaultAidPowerState() & 0x1F)));
+        mNxpPrefsEditor.commit();
+        int defaultRoute=mNxpPrefs.getInt("PREF_SET_DEFAULT_ROUTE_ID",0xFF);
         Log.d(TAG, "reading preferences from user  :" + defaultRoute);
     }
 
@@ -4017,7 +4024,7 @@ public class NfcService implements DeviceHostListener {
      */
     public int GetDefaultRouteLoc()
     {
-        int defaultRouteLoc = mPrefs.getInt("PREF_SET_DEFAULT_ROUTE_ID", GetDefaultRouteEntry()) >> ROUTE_LOC_MASK;
+        int defaultRouteLoc = mNxpPrefs.getInt("PREF_SET_DEFAULT_ROUTE_ID", GetDefaultRouteEntry()) >> ROUTE_LOC_MASK;
         Log.d(TAG, "GetDefaultRouteLoc  :" + defaultRouteLoc);
         return defaultRouteLoc ;
     }
@@ -4029,7 +4036,7 @@ public class NfcService implements DeviceHostListener {
     {
         //return ((ROUTE_ID_UICC << ROUTE_LOC_MASK ) | ROUTE_SWITCH_ON | ROUTE_SWITCH_OFF) ;
         Log.d(TAG, "GetDefaultMifareDesfireRouteEntry :" + mDeviceHost.getDefaultDesfireRoute() );
-        return ((mDeviceHost.getDefaultDesfireRoute() << ROUTE_LOC_MASK ) | ROUTE_SWITCH_ON | ROUTE_SWITCH_OFF) ;
+        return ((mDeviceHost.getDefaultDesfirePowerState() & 0x1F) | (mDeviceHost.getDefaultDesfireRoute() << ROUTE_LOC_MASK)) ;
     }
     /**
      * set default Aid route entry in case application does not configure this route entry
@@ -4037,7 +4044,7 @@ public class NfcService implements DeviceHostListener {
 
     public int GetDefaultRouteEntry()
     {
-        int defaultAidRoute = ((mDeviceHost.getDefaultAidRoute()<< ROUTE_LOC_MASK) | ROUTE_SWITCH_ON);
+        int defaultAidRoute = ((mDeviceHost.getDefaultAidPowerState() & 0x1F) | (mDeviceHost.getDefaultAidRoute()<< ROUTE_LOC_MASK));
         Log.d(TAG, "GetDefaultRouteEntry :" + defaultAidRoute );
         return defaultAidRoute;
     }
@@ -4049,7 +4056,7 @@ public class NfcService implements DeviceHostListener {
     {
         //return ((ROUTE_ID_UICC << ROUTE_LOC_MASK ) | ROUTE_SWITCH_ON | ROUTE_SWITCH_OFF | (TECH_TYPE_A << TECH_TYPE_MASK)) ;
         Log.d(TAG, "getDefaultMifareCLTRoute :" + mDeviceHost.getDefaultMifareCLTRoute() );
-        return ((mDeviceHost.getDefaultMifareCLTRoute() << ROUTE_LOC_MASK ) | ROUTE_SWITCH_ON | ROUTE_SWITCH_OFF | (TECH_TYPE_A << TECH_TYPE_MASK)) ;
+        return ((mDeviceHost.getDefaultMifareCLTPowerState() & 0x1F) | (mDeviceHost.getDefaultMifareCLTRoute() << ROUTE_LOC_MASK) | (TECH_TYPE_A << TECH_TYPE_MASK)) ;
     }
 
     public boolean setDefaultRoute(int defaultRouteEntry, int defaultProtoRouteEntry, int defaultTechRouteEntry) {
@@ -4058,7 +4065,7 @@ public class NfcService implements DeviceHostListener {
     }
 
     public int getDefaultRoute() {
-        return mPrefs.getInt(PREF_DEFAULT_ROUTE_ID, DEFAULT_ROUTE_ID_DEFAULT);
+        return mNxpPrefs.getInt(PREF_DEFAULT_ROUTE_ID, DEFAULT_ROUTE_ID_DEFAULT);
     }
 
 
@@ -4070,6 +4077,11 @@ public class NfcService implements DeviceHostListener {
         mHandler.sendEmptyMessage(MSG_COMMITED_FELICA_ROUTING);
     }
 
+    public int getAidRoutingTableStatus() {
+        int aidTableStatus = 0x00;
+        aidTableStatus = mNxpPrefs.getInt("PREF_SET_AID_ROUTING_TABLE_FULL",0x00);
+        return aidTableStatus;
+    }
 
     public void routeNfcid2(String nfcid2, String syscode, String optparam) {
         Message msg = mHandler.obtainMessage();
@@ -4779,8 +4791,28 @@ public class NfcService implements DeviceHostListener {
         private void sendMultiEvtBroadcast(Intent intent) {
 
             ArrayList<String> packageList = mNxpNfcController.getEnabledMultiEvtsPackageList();
+            ComponentName unicastComponent = null;
             if(packageList.size() == 0) {
                 Log.d(TAG, "No packages to send broadcast.");
+                unicastComponent = mNxpNfcController.getUnicastPackage();
+                if(unicastComponent != null)
+                {
+                    intent.setComponent(unicastComponent);
+                    try {
+                        //start gsma
+                        Log.d(TAG, "Starting activity uincast Pkg"+unicastComponent.flattenToString());
+                        intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        if(mContext.getPackageManager().resolveActivity(intent, 0) != null)
+                        {
+                            mContext.startActivity(intent);
+                        } else {
+                            Log.d(TAG, "Intent not resolved");
+                        }
+                    } catch (Exception e) {
+                        if (DBG) Log.d(TAG, "Exception: " + e.getMessage());
+                    }
+                }
                 return;
             }
 
@@ -5041,6 +5073,7 @@ public class NfcService implements DeviceHostListener {
             } else if(action.equals(Intent.ACTION_SHUTDOWN)) {
                 mPowerShutDown = true;
                 Log.d(TAG,"Device is shutting down.");
+                mDeviceHost.doSetScreenOrPowerState(ScreenStateHelper.POWER_STATE_OFF);
             }
         }
     };
