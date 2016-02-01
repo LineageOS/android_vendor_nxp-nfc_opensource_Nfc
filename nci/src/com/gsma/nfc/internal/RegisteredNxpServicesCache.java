@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
  * Copyright (C) 2015 NXP Semiconductors
@@ -33,7 +33,7 @@ import android.content.pm.ServiceInfo;
 import android.content.pm.PackageItemInfo;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager.NameNotFoundException;
-import android.nfc.cardemulation.AidGroup;
+import android.nfc.cardemulation.NQAidGroup;
 import android.nfc.cardemulation.NQApduServiceInfo;
 import android.nfc.cardemulation.CardEmulation;
 import android.nfc.cardemulation.HostApduService;
@@ -236,10 +236,10 @@ public class RegisteredNxpServicesCache {
             int seId = 0;
             int userId = 0;
             int bannerId = 0;
-            AidGroup aidGroup = null;
+            NQAidGroup nqaidGroup = null;
             Drawable DrawableResource = null;
             NQApduServiceInfo apduService =null;
-            ArrayList<AidGroup> dynamicAidGroup = new ArrayList<AidGroup>();
+            ArrayList<NQAidGroup> dynamicNQAidGroup = new ArrayList<NQAidGroup>();
 
             String tagName = parser.getName();
             if ("apduservices".equals(tagName)) {
@@ -265,9 +265,9 @@ public class RegisteredNxpServicesCache {
                         }
 
                         if ("aid-group".equals(tagName) && parser.getDepth() == 3 && inService) {
-                            AidGroup group = AidGroup.createFromXml(parser);
+                            NQAidGroup group = NQAidGroup.createFromXml(parser);
                             if (group != null) {
-                                dynamicAidGroup.add(group);
+                                dynamicNQAidGroup.add(group);
                             } else {
                                 Log.e(TAG, "Could not parse AID group.");
                             }
@@ -285,12 +285,12 @@ public class RegisteredNxpServicesCache {
                             resolveInfo.serviceInfo.packageName = currentComponent.getPackageName();
                             resolveInfo.serviceInfo.name = currentComponent.getClassName();
                             NQApduServiceInfo.ESeInfo mEseInfo = new NQApduServiceInfo.ESeInfo(seId,powerstate);
-                            ArrayList<android.nfc.cardemulation.AidGroup> staticAidGroups = null;
-                            apduService = new NQApduServiceInfo(resolveInfo,onHost,description,staticAidGroups, dynamicAidGroup,
+                            ArrayList<android.nfc.cardemulation.NQAidGroup> staticNQAidGroups = null;
+                            apduService = new NQApduServiceInfo(resolveInfo,onHost,description,staticNQAidGroups, dynamicNQAidGroup,
                                                                requiresUnlock,bannerId,userId, "Fixme: NXP:<Activity Name>", mEseInfo,null, DrawableResource, modifiable);
                             mApduServices.put(currentComponent, apduService);
                             Log.d(TAG,"mApduServices size= "+ mApduServices.size());
-                            dynamicAidGroup.clear();
+                            dynamicNQAidGroup.clear();
                             inService = false;
                             currentComponent = null;
                             drawbalePath = null;
@@ -298,7 +298,7 @@ public class RegisteredNxpServicesCache {
                             modifiable = false;
                             seId = 0;
                             userId = 0;
-                            aidGroup = null;
+                            nqaidGroup = null;
                             DrawableResource = null;
                             apduService =null;
                         }

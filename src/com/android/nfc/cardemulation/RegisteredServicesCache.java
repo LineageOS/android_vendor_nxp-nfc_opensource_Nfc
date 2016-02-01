@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
  * Copyright (C) 2013 The Android Open Source Project
@@ -34,6 +34,7 @@ import android.content.pm.ResolveInfo;
 import android.content.pm.ServiceInfo;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.net.Uri;
+import android.nfc.cardemulation.NQAidGroup;
 import android.nfc.cardemulation.AidGroup;
 import android.nfc.cardemulation.NQApduServiceInfo;
 import android.nfc.cardemulation.CardEmulation;
@@ -97,7 +98,7 @@ public class RegisteredServicesCache {
 
     static class DynamicAids {
         public final int uid;
-        public final HashMap<String, AidGroup> aidGroups = Maps.newHashMap();
+        public final HashMap<String, NQAidGroup> aidGroups = Maps.newHashMap();
 
         DynamicAids(int uid) {
             this.uid = uid;
@@ -338,8 +339,8 @@ public class RegisteredServicesCache {
                     toBeRemoved.add(component);
                     continue;
                 } else {
-                    for (AidGroup group : dynamicAids.aidGroups.values()) {
-                        serviceInfo.setOrReplaceDynamicAidGroup(group);
+                    for (NQAidGroup group : dynamicAids.aidGroups.values()) {
+                        serviceInfo.setOrReplaceDynamicNQAidGroup(group);
                     }
                 }
             }
@@ -378,7 +379,7 @@ public class RegisteredServicesCache {
                 boolean inService = false;
                 ComponentName currentComponent = null;
                 int currentUid = -1;
-                ArrayList<AidGroup> currentGroups = new ArrayList<AidGroup>();
+                ArrayList<NQAidGroup> currentGroups = new ArrayList<NQAidGroup>();
                 while (eventType != XmlPullParser.END_DOCUMENT) {
                     tagName = parser.getName();
                     if (eventType == XmlPullParser.START_TAG) {
@@ -398,7 +399,7 @@ public class RegisteredServicesCache {
                             }
                         }
                         if ("aid-group".equals(tagName) && parser.getDepth() == 3 && inService) {
-                            AidGroup group = AidGroup.createFromXml(parser);
+                            NQAidGroup group = NQAidGroup.createFromXml(parser);
                             if (group != null) {
                                 currentGroups.add(group);
                             } else {
@@ -412,7 +413,7 @@ public class RegisteredServicesCache {
                                     currentGroups.size() > 0) {
                                 final int userId = UserHandle.getUserId(currentUid);
                                 DynamicAids dynAids = new DynamicAids(currentUid);
-                                for (AidGroup group : currentGroups) {
+                                for (NQAidGroup group : currentGroups) {
                                     dynAids.aidGroups.put(group.getCategory(), group);
                                 }
                                 UserServices services = findOrCreateUserLocked(userId);
@@ -455,7 +456,7 @@ public class RegisteredServicesCache {
                     out.startTag(null, "service");
                     out.attribute(null, "component", service.getKey().flattenToString());
                     out.attribute(null, "uid", Integer.toString(service.getValue().uid));
-                    for (AidGroup group : service.getValue().aidGroups.values()) {
+                    for (NQAidGroup group : service.getValue().aidGroups.values()) {
                         group.writeAsXml(out);
                     }
                     out.endTag(null, "service");
@@ -475,7 +476,7 @@ public class RegisteredServicesCache {
     }
 
     public boolean registerAidGroupForService(int userId, int uid,
-            ComponentName componentName, AidGroup aidGroup) {
+            ComponentName componentName, NQAidGroup aidGroup) {
         ArrayList<NQApduServiceInfo> newServices = null;
         boolean success;
         synchronized (mLock) {
@@ -495,7 +496,7 @@ public class RegisteredServicesCache {
                 return false;
             }
             // Do another AID validation, since a caller could have thrown in a modified
-            // AidGroup object with invalid AIDs over Binder.
+            // NQAidGroup object with invalid AIDs over Binder.
             List<String> aids = aidGroup.getAids();
             for (String aid : aids) {
                 if (!CardEmulation.isValidAid(aid)) {
@@ -503,7 +504,7 @@ public class RegisteredServicesCache {
                     return false;
                 }
             }
-            serviceInfo.setOrReplaceDynamicAidGroup(aidGroup);
+            serviceInfo.setOrReplaceDynamicNQAidGroup(aidGroup);
             DynamicAids dynAids = services.dynamicAids.get(componentName);
             if (dynAids == null) {
                 dynAids = new DynamicAids(uid);
@@ -526,7 +527,7 @@ public class RegisteredServicesCache {
         return success;
     }
 
-    public AidGroup getAidGroupForService(int userId, int uid, ComponentName componentName,
+    public NQAidGroup getAidGroupForService(int userId, int uid, ComponentName componentName,
             String category) {
         NQApduServiceInfo serviceInfo = getService(userId, componentName);
         if (serviceInfo != null) {
@@ -534,7 +535,7 @@ public class RegisteredServicesCache {
                 Log.e(TAG, "UID mismatch");
                 return null;
             }
-            return serviceInfo.getDynamicAidGroupForCategory(category);
+            return serviceInfo.getDynamicNQAidGroupForCategory(category);
         } else {
             Log.e(TAG, "Could not find service " + componentName);
             return null;
@@ -554,14 +555,14 @@ public class RegisteredServicesCache {
                     Log.e(TAG, "UID mismatch");
                     return false;
                 }
-                if (!serviceInfo.removeDynamicAidGroupForCategory(category)) {
+                if (!serviceInfo.removeDynamicNQAidGroupForCategory(category)) {
                     Log.e(TAG," Could not find dynamic AIDs for category " + category);
                     return false;
                 }
                 // Remove from local cache
                 DynamicAids dynAids = services.dynamicAids.get(componentName);
                 if (dynAids != null) {
-                    AidGroup deletedGroup = dynAids.aidGroups.remove(category);
+                    NQAidGroup deletedGroup = dynAids.aidGroups.remove(category);
                     success = writeDynamicAidsLocked();
                     if (success) {
                         newServices = new ArrayList<NQApduServiceInfo>(services.services.values());
