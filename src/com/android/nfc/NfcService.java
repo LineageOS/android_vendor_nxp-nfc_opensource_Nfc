@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
  * Copyright (C) 2015 NXP Semiconductors
@@ -2638,13 +2638,7 @@ public class NfcService implements DeviceHostListener {
              if(!(f.isFile()))
              {
                  Log.i(TAG, "FileNotFound ls backup");
-                 out = new PrintWriter(LS_BACKUP_PATH);
-                 this.status = "true";
-                 out.println("null");
-                 out.println("null");
-                 out.println("null");
-                 out.println("true");
-                 out.close();
+                 this.status = null;
              }
              /*If the file exists*/
              else
@@ -2668,14 +2662,28 @@ public class NfcService implements DeviceHostListener {
              }
              finally{
                  try{
-                 if(out != null)
-                 out.close();
                  if(br != null)
                      br.close();
+                 /*If the file does not exist or empty file */
+                 if(this.status == null)
+                 {
+                     out = new PrintWriter(LS_BACKUP_PATH);
+                     this.status = "true";
+                     out.println("null");
+                     out.println("null");
+                     out.println("null");
+                     out.println("true");
+                 }
                  }catch(IOException e)
                  {
                      Log.i(TAG, "IOException Raised during LS Initialization ");
                      return;
+                 }
+                 finally{
+                     if(this.status == null)
+                         this.status = "true";
+                     if(out != null)
+                         out.close();
                  }
              }
              if(this.status.equals("true"))
@@ -2746,11 +2754,11 @@ public class NfcService implements DeviceHostListener {
             }catch(InterruptedException re)
             {
                 /*Retry failed todo*/
-                Log.i(TAG, "RemoteException while LS recovery");
+                Log.i(TAG, "InterruptedException while LS recovery");
             }catch(FileNotFoundException re)
             {
                 /*Retry failed todo*/
-                Log.i(TAG, "InterruptException while LS recovery");
+                Log.i(TAG, "FileNotFoundException while LS recovery");
             }
            }
          }
@@ -2758,7 +2766,7 @@ public class NfcService implements DeviceHostListener {
              byte[] ret = {0x4E,0x02,(byte)0x69,(byte)0x87};
             Log.i(TAG, "Enter: NfcAlaService constructor file open");
              File f = new File(LS_UPDATE_BACKUP_PATH);
-            /*If the file does not exists*/
+            /*If the file exists*/
             if((f.isFile()))
             {
                 Log.i(TAG, "File Found LS update required");
@@ -2788,7 +2796,7 @@ public class NfcService implements DeviceHostListener {
                        Log.i(TAG, "LS update recovery Exception: ");
                }
             }
-            /*If the file exists*/
+            /*If the file does not exists*/
             else
             {
                 Log.i(TAG, "No LS update");
