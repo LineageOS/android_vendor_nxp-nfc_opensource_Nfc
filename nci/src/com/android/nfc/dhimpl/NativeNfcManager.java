@@ -292,6 +292,15 @@ public class NativeNfcManager implements DeviceHost {
     public native int   getDefaultMifareCLTRoute();
 
     @Override
+    public native int   getDefaultAidPowerState();
+
+    @Override
+    public native int   getDefaultDesfirePowerState();
+
+    @Override
+    public native int   getDefaultMifareCLTPowerState();
+
+    @Override
     public native void doSetScreenOrPowerState(int state);
 
     @Override
@@ -370,7 +379,7 @@ public class NativeNfcManager implements DeviceHost {
     public native int JCOSDownload();
 
     @Override
-    public native void doSetVenConfigValue(int venconfig);
+    public native void doSetNfcMode(int nfcMode);
 
     @Override
     public native int GetDefaultSE();
