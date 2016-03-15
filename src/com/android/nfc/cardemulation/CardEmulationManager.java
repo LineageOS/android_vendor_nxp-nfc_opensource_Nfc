@@ -381,12 +381,14 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
                 throws RemoteException {
             NfcPermissions.validateUserId(userId);
             NfcPermissions.enforceAdminPermissions(mContext);
-            List<NQApduServiceInfo> nxpapdu = mServiceCache.getServicesForCategory(userId, category);
-            ArrayList<ApduServiceInfo> apdu = new ArrayList<ApduServiceInfo>();
-            for(ApduServiceInfo l : apdu) {
-                apdu.add(l);
+            List<NQApduServiceInfo> nqApduServices = mServiceCache.getServicesForCategory(userId, category);
+            ArrayList<ApduServiceInfo> apduServices = new ArrayList<ApduServiceInfo>();
+            for(NQApduServiceInfo nqApdu : nqApduServices) {
+                ApduServiceInfo apduService = nqApdu.createApduServiceInfo();
+                apduServices.add(apduService);
             }
-            return apdu;
+            if(DBG) Log.d(TAG, "getServices() size: " + apduServices.size());
+            return apduServices;
         }
 
         @Override
