@@ -1909,8 +1909,7 @@ bool SecureElement::getSeVerInfo(int seIndex, char * verInfo, int verInfoSz, UIN
         return false;
     }
 
-    strncpy(verInfo, "Version info not available", verInfoSz-1);
-    verInfo[verInfoSz-1] = '\0';
+    strlcpy(verInfo, "Version info not available", verInfoSz-2);
 
     UINT8 pipe = (mEeInfo[seIndex].ee_handle == EE_HANDLE_0xF3) ? 0x70 : 0x71;
     UINT8 host = (pipe == STATIC_PIPE_0x70) ? 0x02 : 0x03;
