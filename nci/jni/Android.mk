@@ -1,4 +1,4 @@
-VOB_COMPONENTS := vendor/nxp-nfc/opensource/libnfc-nci
+VOB_COMPONENTS := vendor/nxp-nfc/opensource/libnfc-nci/src
 NFA := $(VOB_COMPONENTS)/nfa
 NFC := $(VOB_COMPONENTS)/nfc
 
