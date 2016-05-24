@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2016, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
+ * Copyright (C) 2015 NXP Semiconductors
+ * The original Work has been changed by NXP Semiconductors.
+ *
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,25 +19,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/******************************************************************************
- *
- *  The original Work has been changed by NXP Semiconductors.
- *
- *  Copyright (C) 2015 NXP Semiconductors
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
- ******************************************************************************/
 #include <semaphore.h>
 #include <errno.h>
 #include "OverrideLog.h"
@@ -122,7 +109,7 @@ static void NxpResponse_SetDhlf_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param
 
 }
 
-static void NxpResponse_SetVenConfig_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param)
+static void NxpResponse_SetVenConfig_Cb(UINT8 /* event */, UINT16 param_len, UINT8 *p_param)
 {
     ALOGD("NxpResponse_SetVenConfig_Cb Received length data = 0x%x status = 0x%x", param_len, p_param[3]);
     if(p_param[3] == 0x00)
@@ -137,7 +124,7 @@ static void NxpResponse_SetVenConfig_Cb(UINT8 event, UINT16 param_len, UINT8 *p_
     gnxpfeature_conf.NxpFeatureConfigEvt.notifyOne ();
 }
 
-static void NxpResponse_SetSWPBitRate_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param)
+static void NxpResponse_SetSWPBitRate_Cb(UINT8 /* event */, UINT16 param_len, UINT8 *p_param)
 {
     ALOGD("NxpResponse_SetSWPBitRate_CbReceived length data = 0x%x status = 0x%x", param_len, p_param[3]);
     if(p_param[3] == 0x00)
@@ -163,7 +150,7 @@ static void NxpResponse_SetSWPBitRate_Cb(UINT8 event, UINT16 param_len, UINT8 *p
  ** Returns:         success/failure
  **
  *******************************************************************************/
-static void NxpResponse_EnableAGCDebug_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param)
+static void NxpResponse_EnableAGCDebug_Cb(UINT8 /* event */, UINT16 param_len, UINT8 *p_param)
 {
     ALOGD("NxpResponse_EnableAGCDebug_Cb Received length data = 0x%x", param_len);
     SetCbStatus(NFA_STATUS_FAILED);
@@ -210,7 +197,6 @@ tNFA_STATUS SendAGCDebugCommand()
 {
     tNFA_STATUS status = NFA_STATUS_FAILED;
     uint8_t cmd_buf[] = {0x2F, 0x33, 0x04, 0x40, 0x00, 0x40, 0xD8};
-    uint8_t dynamic_rssi_buf[50];
     ALOGD("%s: enter", __FUNCTION__);
     SetCbStatus(NFA_STATUS_FAILED);
     gnxpfeature_conf.rsp_len = 0;
@@ -223,7 +209,7 @@ tNFA_STATUS SendAGCDebugCommand()
         gnxpfeature_conf.NxpFeatureConfigEvt.wait(1000); /* wait for callback */
     }
     else
-    {    tNFA_STATUS status = NFA_STATUS_FAILED;
+    {
         ALOGE ("%s: Failed NFA_SendNxpNciCommand", __FUNCTION__);
     }
     status = GetCbStatus();
@@ -520,7 +506,7 @@ tNFA_STATUS SetVenConfigValue(jint nfcMode)
     return status;
 }
 
-static void NxpResponse_GetSwpStausValueCb(UINT8 event, UINT16 param_len, UINT8 *p_param)
+static void NxpResponse_GetSwpStausValueCb(UINT8 /* event */, UINT16 param_len, UINT8 *p_param)
 {
     ALOGD("NxpResponse_GetSwpStausValueCb length data = 0x%x status = 0x%x", param_len, p_param[3]);
     if(p_param[3] == 0x00)
@@ -574,7 +560,7 @@ tNFA_STATUS GetSwpStausValue(void)
         ALOGE ("%s: Failed NFA_SendNxpNciCommand", __FUNCTION__);
     }
     status = GetCbStatus();
-    ALOGD("%s : gActualSeCount = %d",__FUNCTION__, gActualSeCount);
+    ALOGD("%s : gActualSeCount = %ld",__FUNCTION__, gActualSeCount);
     return status;
 }
 

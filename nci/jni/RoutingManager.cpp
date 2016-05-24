@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2016, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
+ * Copyright (C) 2015 NXP Semiconductors
+ * The original Work has been changed by NXP Semiconductors.
+ *
  * Copyright (C) 2013 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,25 +19,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/******************************************************************************
- *
- *  The original Work has been changed by NXP Semiconductors.
- *
- *  Copyright (C) 2015 NXP Semiconductors
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
- ******************************************************************************/
 /*
  *  Manage the listen-mode routing table.
  */
@@ -177,28 +164,28 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
 
     if (GetNxpNumValue (NAME_NXP_DEFAULT_SE, (void*)&num, sizeof(num)))
     {
-        ALOGD ("%d: nfcManager_GetDefaultSE", num);
+        ALOGD ("%lu: nfcManager_GetDefaultSE", num);
         mDefaultEe = num;
     }
     if (GetNxpNumValue (NAME_NXP_ENABLE_ADD_AID, (void*)&num, sizeof(num)))
     {
-        ALOGD ("%d: mAddAid", num);
+        ALOGD ("%lu: mAddAid", num);
         mAddAid = num;
     }
 #if (NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE == PN548C2)
     if (GetNxpNumValue (NAME_NXP_ESE_WIRED_PRT_MASK, (void*)&num, sizeof(num)))
     {
-        ALOGD (" NAME_NXP_ESE_WIRED_PRT_MASK :%d", num);
+        ALOGD (" NAME_NXP_ESE_WIRED_PRT_MASK :%lu", num);
         gUICCVirtualWiredProtectMask = num;
     }
     if (GetNxpNumValue (NAME_NXP_UICC_WIRED_PRT_MASK, (void*)&num, sizeof(num)))
     {
-        ALOGD ("%d: NAME_NXP_UICC_WIRED_PRT_MASK", num);
+        ALOGD ("%lu: NAME_NXP_UICC_WIRED_PRT_MASK", num);
         gEseVirtualWiredProtectMask = num;
     }
     if (GetNxpNumValue (NAME_NXP_WIRED_MODE_RF_FIELD_ENABLE, (void*)&num, sizeof(num)))
     {
-        ALOGD ("%d: NAME_NXP_WIRED_MODE_RF_FIELD_ENABLE", num);
+        ALOGD ("%lu: NAME_NXP_WIRED_MODE_RF_FIELD_ENABLE", num);
         gWiredModeRfFieldEnable = num;
     }
 #endif
@@ -265,7 +252,7 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
 #endif
     }
 
-    ALOGD("gSeDiscoverycount = %d", gSeDiscoverycount);
+    ALOGD("gSeDiscoverycount = %ld", gSeDiscoverycount);
 #if(NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE == PN548C2)
     swp_rdr_req_ntf_info.mMutex.lock();
     memset(&(swp_rdr_req_ntf_info.swp_rd_req_info),0x00,sizeof(rd_swp_req_t));
@@ -354,7 +341,7 @@ void RoutingManager::setRouting(bool isHCEEnabled)
     tNFA_STATUS nfaStat;
     tNFA_HANDLE defaultHandle = NFA_HANDLE_INVALID;
     tNFA_HANDLE ee_handleList[SecureElement::MAX_NUM_EE];
-    UINT8 i, count;
+    UINT8 i = 0, count = 0;
     static const char fn [] = "SecureElement::setRouting";
     unsigned long num = 0;
 
@@ -606,11 +593,11 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
 
        if (GetNxpNumValue(NAME_CHECK_DEFAULT_PROTO_SE_ID, &check_default_proto_se_id_req, sizeof(check_default_proto_se_id_req)))
        {
-           ALOGE("%s : CHECK_DEFAULT_PROTO_SE_ID - 0x%02x ",fn,check_default_proto_se_id_req);
+           ALOGE("%s : CHECK_DEFAULT_PROTO_SE_ID - 0x%02lx ",fn,check_default_proto_se_id_req);
        }
        else
        {
-           ALOGE("%s : CHECK_DEFAULT_PROTO_SE_ID not defined. Taking default value - 0x%02x ",fn,check_default_proto_se_id_req);
+           ALOGE("%s : CHECK_DEFAULT_PROTO_SE_ID not defined. Taking default value - 0x%02lx ",fn,check_default_proto_se_id_req);
        }
        if(check_default_proto_se_id_req == 0x01)
        {
@@ -820,7 +807,7 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
     {
         unsigned long max_tech_mask = 0x03;
         max_tech_mask = SecureElement::getInstance().getSETechnology(defaultTechSeID);
-        ALOGD ("%s: enter,max_tech_mask :%x", fn, max_tech_mask);
+        ALOGD ("%s: enter,max_tech_mask :%lx", fn, max_tech_mask);
         unsigned int default_tech_power_mask[5]={0,};
         unsigned int defaultTechFPowerstate=0x1F;
 
@@ -1043,7 +1030,7 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
 }
 void RoutingManager::setCeRouteStrictDisable(UINT32 state)
 {
-    ALOGD ("%s: mCeRouteScreenLock = 0x%X", __FUNCTION__, state);
+    ALOGD ("%s: mCeRouteScreenLock = 0x%lX", __FUNCTION__, state);
     mCeRouteStrictDisable = state;
 }
 
@@ -1066,7 +1053,6 @@ void RoutingManager::enableRoutingToHost()
             }else{
                 nfaStat = NFA_EeSetDefaultTechRouting (mDefaultEe, NFA_TECHNOLOGY_MASK_A, 0, 0, 0, 0);
             }
-            if (nfaStat == NFA_STATUS_OK)
 #else
             nfaStat = NFA_EeSetDefaultTechRouting (mDefaultEe, NFA_TECHNOLOGY_MASK_A, 0, 0);
 #endif
@@ -1148,7 +1134,7 @@ bool RoutingManager::setRoutingEntry(int type, int value, int route, int power)
     unsigned long max_tech_mask = 0x03;
     unsigned long uiccListenTech = 0;
     max_tech_mask = SecureElement::getInstance().getSETechnology(0x402);
-    ALOGD ("%s: enter,max_tech_mask :%x", fn, max_tech_mask);
+    ALOGD ("%s: enter,max_tech_mask :%lx", fn, max_tech_mask);
 
     tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
     tNFA_HANDLE ee_handle = NFA_HANDLE_INVALID;
@@ -1159,8 +1145,6 @@ bool RoutingManager::setRoutingEntry(int type, int value, int route, int power)
     UINT8 screen_lock_mask = 0x00;
     UINT8 screen_off_mask = 0x00;
     UINT8 protocol_mask = 0x00;
-    tNFA_HANDLE uicc_handle = NFA_HANDLE_INVALID;
-    tNFA_HANDLE ese_handle = NFA_HANDLE_INVALID;
     ee_handle = (( route == 0x01)? 0x4C0 : (( route == 0x02)? 0x402 : NFA_HANDLE_INVALID));
     if(0x00 == route)
     {
@@ -1406,7 +1390,6 @@ bool RoutingManager::addAidRouting(const UINT8* aid, UINT8 aidLen, int route)
 #if(NXP_EXTNS == TRUE)
     tNFA_HANDLE handle;
     tNFA_HANDLE current_handle;
-    unsigned long num = 0;
     ALOGD ("%s: enter, route:%x power:0x%x isprefix:%x", fn, route, power, isprefix);
     handle = SecureElement::getInstance().getEseHandleFromGenericId(route);
     ALOGD ("%s: enter, route:%x", fn, handle);
@@ -1539,7 +1522,6 @@ bool RoutingManager::removeNfcid2Routing(UINT8* nfcid2) {
 
     static const char fn [] = "RoutingManager::removeNfcid2Routing";
     ALOGD ("%s: enter", fn);
-    int i=0;
     UINT16 nfcid2Handle=0;
     UINT8 nfcid2HandleLoc=0;
     UINT8 NfcID2_loc_rmv=0 ;
@@ -1585,7 +1567,7 @@ bool RoutingManager::removeNfcid2Routing(UINT8* nfcid2) {
 
 
 //FelicaOnHost
-void *nfcID2_req_handler_async(void *arg)
+void *nfcID2_req_handler_async(void* /* arg */)
 {
 
      tNFC_STATUS status;
@@ -1631,7 +1613,7 @@ void *nfcID2_req_handler_async(void *arg)
 
 
 //FelicaOnHost
-void *nfcID2_rmv_handler_async(void *arg)
+void *nfcID2_rmv_handler_async(void* /* arg */)
 {
 
      tNFC_STATUS status;
@@ -1720,7 +1702,6 @@ void RoutingManager::HandleAddNfcID2_Req()
 {
     int i=0;
     UINT16 sysCode=0;
-    UINT8 defaultNfcId2[NFCID2_LEN_MAX]={0,0,0,0,0,0,0,0};
     static const char fn [] = "RoutingManager::HandleAddNfcID2_Req";
     RoutingManager& routingManager = RoutingManager::getInstance();
     //NfcID2_add_req.mMutex.lock();
@@ -1760,8 +1741,6 @@ void RoutingManager::HandleRmvNfcID2_Req()
     UINT8 nfcid2RmvHandleLoc =0;
     UINT8 nfcid2AddHandleLoc =0;
     UINT16 nfcid2RMVHandle;
-    static const char fn [] = "RoutingManager::HandleRmvNfcID2_Req";
-    RoutingManager& routingManager = RoutingManager::getInstance();
     //NfcID2_add_req.mMutex.lock();
     for(nfcid2RmvHandleLoc =0; nfcid2RmvHandleLoc < NFCID2_COUNT_MAX ; nfcid2RmvHandleLoc++)
     {
@@ -2224,7 +2203,7 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
                 ALOGE ("%s: NFA_EE_ACTION_EVT; h=0x%X; unknown trigger (0x%X)", fn, action.ee_handle, action.trigger);
 
 #if((NXP_EXTNS == TRUE)&&(NFC_NXP_ESE == TRUE) && (NFC_NXP_CHIP_TYPE == PN548C2))
-            if((action.ee_handle == 0x4C0))
+            if(action.ee_handle == 0x4C0)
             {
                 ALOGE ("%s: NFA_EE_ACTION_EVT; h=0x%X;DWP CL activated (0x%X)", fn, action.ee_handle, action.trigger);
                 se.setCLState(true);
@@ -2565,7 +2544,7 @@ void reader_req_event_ntf (union sigval)
     }
 }
 #endif
-void *ee_removed_ntf_handler_thread(void *data)
+void *ee_removed_ntf_handler_thread(void* /* data */)
 {
     static const char fn [] = "ee_removed_ntf_handler_thread";
     tNFA_STATUS stat = NFA_STATUS_FAILED;

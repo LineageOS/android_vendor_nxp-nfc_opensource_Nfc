@@ -1,4 +1,7 @@
 /*
+ * Copyright (c) 2016, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
  * Copyright (C) 2015 NXP Semiconductors
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -174,7 +177,7 @@ int nfcManager_doAppletLoadApplet(JNIEnv* e, jobject o, jstring name, jbyteArray
 
     ALOGD ("%s: exit; status =0x%X", __FUNCTION__,wStatus);
 #else
-
+    (void)data;
     tNFA_STATUS wStatus = 0x0F;
     ALOGD ("%s: No p61", __FUNCTION__);
 #endif
@@ -516,7 +519,7 @@ jbyteArray nfcManager_lsGetStatus(JNIEnv* e, jobject)
 ** Returns:         Void.
 **
 *******************************************************************************/
-int nfcManager_getLoaderServiceConfVersion(JNIEnv* e, jobject o)
+int nfcManager_getLoaderServiceConfVersion(JNIEnv* /* e */, jobject /* o */)
 {
     unsigned long num = 0;
     UINT8 ls_version = LS_DEFAULT_VERSION;

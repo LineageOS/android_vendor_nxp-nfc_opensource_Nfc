@@ -1005,7 +1005,7 @@ static int reSelect (tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded)
         if(NfcTag::getInstance().getActivationState() == NfcTag::Idle)
         {
             ALOGD("%s:tag is in idle", __FUNCTION__);
-            if((NfcTag::getInstance().mActivationParams_t.mTechLibNfcTypes == NFC_PROTOCOL_ISO_DEP))
+            if(NfcTag::getInstance().mActivationParams_t.mTechLibNfcTypes == NFC_PROTOCOL_ISO_DEP)
             {
                 if(NfcTag::getInstance().mActivationParams_t.mTechParams == NFC_DISCOVERY_TYPE_POLL_A)
                 {
@@ -1167,7 +1167,7 @@ static bool switchRfInterface (tNFA_INTF_TYPE rfInterface)
     bool rVal = true;
     if (rfInterface != sCurrentRfInterface)
     {
-        if (rVal = (0 == reSelect(rfInterface, true)))
+        if ((rVal = (0 == reSelect(rfInterface, true))))
         {
             sCurrentRfInterface = rfInterface;
         }
@@ -1552,7 +1552,7 @@ static jbyteArray nativeNfcTag_doTransceive (JNIEnv* e, jobject o, jbyteArray da
             break;
         }
 
-        ALOGD ("%s: response %d bytes", __FUNCTION__, sRxDataBuffer.size());
+        ALOGD ("%s: response %zu bytes", __FUNCTION__, sRxDataBuffer.size());
 
         if ((natTag.getProtocol () == NFA_PROTOCOL_T2T) &&
             natTag.isT2tNackResponse (sRxDataBuffer.data(), sRxDataBuffer.size()))
@@ -1829,7 +1829,7 @@ static jint nativeNfcTag_doCheckNdef (JNIEnv* e, jobject o, jintArray ndefInfo)
     ALOGD ("%s: try NFA_RwDetectNDef", __FUNCTION__);
     sCheckNdefWaitingForComplete = JNI_TRUE;
 
-    ALOGD ("%s: NfcTag::getInstance ().mTechLibNfcTypes[%d]=%d", __FUNCTION__, NfcTag::getInstance ().mTechLibNfcTypes[handle]);
+    ALOGD ("%s: NfcTag::getInstance ().mTechLibNfcTypes[%d]", __FUNCTION__, NfcTag::getInstance ().mTechLibNfcTypes[handle]);
 
     if (NfcTag::getInstance ().mTechLibNfcTypes[handle] == NFA_PROTOCOL_MIFARE)
     {

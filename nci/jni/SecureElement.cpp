@@ -186,6 +186,8 @@ const UINT16 ACTIVE_SE_USE_ANY = 0xFFFF;
 *******************************************************************************/
 SecureElement::SecureElement ()
 :   mActiveEeHandle (NFA_HANDLE_INVALID),
+    mRecvdTransEvt(false),
+    mAllowWiredMode(false),
     mDestinationGate (4), //loopback gate
     mNfaHciHandle (NFA_HANDLE_INVALID),
     mNativeData (NULL),
@@ -200,17 +202,18 @@ SecureElement::SecureElement ()
     mIsPiping (false),
     mCurrentRouteSelection (NoRoute),
     mActualResponseSize(0),
+    mAtrInfolen (0),
     mUseOberthurWarmReset (false),
     mActivatedInListenMode (false),
     mOberthurWarmResetCommand (3),
     mGetAtrRspwait (false),
-    mAtrInfolen (0),
     mRfFieldIsOn(false),
     mTransceiveWaitOk(false),
-    mAllowWiredMode(false),
-    mRecvdTransEvt(false),
     mWiredModeRfFiledEnable(0)
 {
+#if(NXP_EXTNS == TRUE)
+    memset (&mNfceeData_t, 0, sizeof(mNfceeData_t));
+#endif
     memset (&mEeInfo, 0, sizeof(mEeInfo));
     memset (&mUiccInfo, 0, sizeof(mUiccInfo));
     memset (&mHciCfg, 0, sizeof(mHciCfg));
@@ -218,7 +221,7 @@ SecureElement::SecureElement ()
     memset (mAidForEmptySelect, 0, sizeof(mAidForEmptySelect));
     memset (&mLastRfFieldToggle, 0, sizeof(mLastRfFieldToggle));
     memset (mAtrInfo, 0, sizeof( mAtrInfo));
-    memset (&mNfceeData_t, 0, sizeof(mNfceeData_t));
+
 }
 
 
@@ -299,7 +302,7 @@ bool SecureElement::initialize (nfc_jni_native_data* native)
 #if (NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE == PN548C2)
     if (GetNxpNumValue (NAME_NXP_WIRED_MODE_RF_FIELD_ENABLE, (void*)&num, sizeof(num)))
     {
-        ALOGD ("%s: NAME_NXP_WIRED_MODE_RF_FIELD_ENABLE =%d",fn, num);
+        ALOGD ("%s: NAME_NXP_WIRED_MODE_RF_FIELD_ENABLE =%lu",fn, num);
         mWiredModeRfFiledEnable = num;
     }
 #endif
@@ -308,7 +311,7 @@ bool SecureElement::initialize (nfc_jni_native_data* native)
     {
         nfccStandbytimeout = 20000;
     }
-    ALOGD ("%s: NFCC standby mode timeout =0x%x", fn, nfccStandbytimeout);
+    ALOGD ("%s: NFCC standby mode timeout =0x%lx", fn, nfccStandbytimeout);
     if(nfccStandbytimeout > 0 && nfccStandbytimeout < 5000 )
     {
         nfccStandbytimeout = 5000;
@@ -482,7 +485,7 @@ bool SecureElement::getEeInfo()
 #endif
                     for (size_t yy = 0; yy < mEeInfo[xx].num_tlvs; yy++)
                     {
-                        ALOGD ("%s: EE[%u] TLV[%u]  Tag: 0x%02x  Len: %u  Values[]: 0x%02x  0x%02x  0x%02x ...",
+                        ALOGD ("%s: EE[%u] TLV[%zu]  Tag: 0x%02x  Len: %u  Values[]: 0x%02x  0x%02x  0x%02x ...",
                                 fn, xx, yy, mEeInfo[xx].ee_tlv[yy].tag, mEeInfo[xx].ee_tlv[yy].len, mEeInfo[xx].ee_tlv[yy].info[0],
                                 mEeInfo[xx].ee_tlv[yy].info[1], mEeInfo[xx].ee_tlv[yy].info[2]);
                     }
@@ -574,7 +577,7 @@ bool SecureElement::setEseListenTechMask(UINT8 tech_mask ) {
     if (!mIsInit)
     {
         ALOGE ("%s: not init", fn);
-        return (NULL);
+        return false;
     }
 
     {
@@ -920,7 +923,7 @@ TheEnd:
 void SecureElement::notifyTransactionListenersOfAid (const UINT8* aidBuffer, UINT8 aidBufferLen, const UINT8* dataBuffer, UINT32 dataBufferLen,UINT32 evtSrc)
 {
     static const char fn [] = "SecureElement::notifyTransactionListenersOfAid";
-    ALOGD ("%s: enter; aid len=%u data len=%d", fn, aidBufferLen, dataBufferLen);
+    ALOGD ("%s: enter; aid len=%u data len=%lu", fn, aidBufferLen, dataBufferLen);
 
     if (aidBufferLen == 0) {
         return;
@@ -1062,7 +1065,7 @@ TheEnd:
 void SecureElement::notifyEmvcoMultiCardDetectedListeners ()
 {
     static const char fn [] = "SecureElement::notifyEmvcoMultiCardDetectedListeners";
-    ALOGD ("%s: enter; evtSrc =%u", fn);
+    ALOGD ("%s: enter", fn);
 
     JNIEnv* e = NULL;
     ScopedAttach attach(mNativeData->vm, &e);
@@ -1377,9 +1380,6 @@ bool SecureElement::transceive (UINT8* xmitBuffer, INT32 xmitBufferSize, UINT8* 
     bool isSuccess = false;
     mTransceiveWaitOk = false;
     UINT8 newSelectCmd[NCI_MAX_AID_LEN + 10];
-#if(NXP_EXTNS == TRUE)
-    bool recovery;
-#endif
     ALOGD ("%s: enter; xmitBufferSize=%ld; recvBufferMaxSize=%ld; timeout=%ld", fn, xmitBufferSize, recvBufferMaxSize, timeoutMillisec);
 
     // Check if we need to replace an "empty" SELECT command.
@@ -1462,7 +1462,7 @@ bool SecureElement::transceive (UINT8* xmitBuffer, INT32 xmitBufferSize, UINT8* 
             }
 #endif
 #if((NFC_NXP_TRIPLE_MODE_PROTECTION==TRUE)&&((NFC_NXP_ESE_VER == JCOP_VER_3_2)||(NFC_NXP_ESE_VER == JCOP_VER_3_3)))
-            if((dual_mode_current_state == SPI_DWPCL_BOTH_ACTIVE))
+            if(dual_mode_current_state == SPI_DWPCL_BOTH_ACTIVE)
             {
                 ALOGD("%s, Dont allow wired mode...Dual Mode..", fn);
                 SyncEventGuard guard (mDualModeEvent);
@@ -1767,7 +1767,7 @@ void SecureElement::notifyEEReaderEvent (int evt, int data)
                  * */
                 unsigned long timeout = 0;
                 GetNxpNumValue(NAME_NXP_SWP_RD_START_TIMEOUT, (void *)&timeout, sizeof(timeout));
-                ALOGD ("SWP_RD_START_TIMEOUT : %d", timeout);
+                ALOGD ("SWP_RD_START_TIMEOUT : %lu", timeout);
                 if (timeout > 0)
                     sSwpReaderTimer.set(1000*timeout,startStopSwpReaderProc);
             }
@@ -1792,7 +1792,7 @@ void SecureElement::notifyEEReaderEvent (int evt, int data)
                  * */
                 unsigned long timeout = 0;
                 GetNxpNumValue(NAME_NXP_SWP_RD_TAG_OP_TIMEOUT, (void *)&timeout, sizeof(timeout));
-                ALOGD ("SWP_RD_TAG_OP_TIMEOUT : %d", timeout);
+                ALOGD ("SWP_RD_TAG_OP_TIMEOUT : %lu", timeout);
                 if (timeout > 0)
                     sSwpReaderTimer.set(2000*timeout,startStopSwpReaderProc);
 
@@ -2238,7 +2238,6 @@ tNFA_EE_INFO *SecureElement::findEeByHandle (tNFA_HANDLE eeHandle)
 jint SecureElement::getSETechnology(tNFA_HANDLE eeHandle)
 {
     int tech_mask = 0x00;
-    tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
     static const char fn [] = "SecureElement::getSETechnology";
     // Get Fresh EE info.
     if (! getEeInfo())
@@ -2443,7 +2442,6 @@ bool SecureElement::routeToSecureElement ()
 {
     static const char fn [] = "SecureElement::routeToSecureElement";
     ALOGD ("%s: enter", fn);
-    tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
 //    tNFA_TECHNOLOGY_MASK tech_mask = NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B;   /*commented to eliminate unused variable warning*/
     bool retval = false;
 
@@ -2709,12 +2707,12 @@ tNFA_STATUS SecureElement::reconfigureEseHciInit()
     static const char fn[] = "reconfigureEseHciInit";
     tNFA_STATUS status = NFA_STATUS_FAILED;
     if (isActivatedInListenMode()) {
-        ALOGD("Denying HCI re-initialization due to SE listen mode active");
+        ALOGD("%s: Denying HCI re-initialization due to SE listen mode active", fn);
         return status;
     }
 
     if (isRfFieldOn()) {
-        ALOGD("Denying HCI re-initialization due to SE in active RF field");
+        ALOGD("%s: Denying HCI re-initialization due to SE in active RF field", fn);
         return status;
     }
     if(android::isDiscoveryStarted() == true)
@@ -2916,7 +2914,6 @@ int SecureElement::decodeBerTlvLength(UINT8* data,int index, int data_length )
     int decoded_length = -1;
     int length = 0;
     int temp = data[index] & 0xff;
-    int temp_len = 0;
     ALOGD("decodeBerTlvLength index= %d data[index+0]=0x%x data[index+1]=0x%x len=%d",index, data[index], data[index+1], data_length);
 
     if (temp < 0x80) {
@@ -2983,33 +2980,33 @@ TheEnd:
     return decoded_length;
 }
 #if((NFC_NXP_ESE == TRUE)&&(NXP_EXTNS == TRUE))
-void spi_prio_signal_handler (int signum, siginfo_t *info, void *unused)
+void spi_prio_signal_handler (int signum, siginfo_t *info, void* /* unused */)
 {
-    ALOGD ("%s: Inside the Signal Handler %d\n", __FUNCTION__, SIG_NFC);
+    ALOGD ("%s: Inside the Signal Handler %d\n", __FUNCTION__, signum);
     if (signum == SIG_NFC)
     {
         ALOGD ("%s: Signal is SIG_NFC\n", __FUNCTION__);
         if(info->si_int & P61_STATE_SPI_PRIO)
         {
-            ALOGD ("%s: SPI PRIO request Signal....=%d\n", __FUNCTION__);
+            ALOGD ("%s: SPI PRIO request Signal....=%d\n", __FUNCTION__, info->si_int);
             hold_the_transceive = true;
             setSPIState(true);
          }
          else if(info->si_int & P61_STATE_SPI_PRIO_END)
          {
-             ALOGD ("%s: SPI PRIO End Signal\n", __FUNCTION__);
+             ALOGD ("%s: SPI PRIO End Signal....=%d\n", __FUNCTION__, info->si_int);
              hold_the_transceive = false;
              SyncEventGuard guard (sSPIPrioSessionEndEvent);
              sSPIPrioSessionEndEvent.notifyOne ();
          }
         else if(info->si_int & P61_STATE_SPI)
         {
-            ALOGD ("%s: SPI OPEN request Signal....=%d\n", __FUNCTION__);
+            ALOGD ("%s: SPI OPEN request Signal....=%d\n", __FUNCTION__, info->si_int);
             setSPIState(true);
         }
         else if(info->si_int & P61_STATE_SPI_END)
         {
-            ALOGD ("%s: SPI End Signal\n", __FUNCTION__);
+            ALOGD ("%s: SPI End Signal....=%d\n", __FUNCTION__, info->si_int);
             hold_the_transceive = false;
             setSPIState(false);
         }
@@ -3042,7 +3039,6 @@ void SecureElement::setCPTimeout()
     bool found =false;
     long retlen = 0;
     INT32 timeout =12000;
-    INT32 sSendlength;
     INT32 recvBufferActualSize = 0;
     static const char fn [] = "SecureElement::setCPTimeout";
     for ( i = 0; i < mActualNumEe; i++)

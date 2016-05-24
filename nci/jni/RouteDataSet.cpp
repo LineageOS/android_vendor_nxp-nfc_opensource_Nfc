@@ -1,4 +1,10 @@
 /*
+ * Copyright (c) 2016, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
+ * Copyright (C) 2015 NXP Semiconductors
+ * The original Work has been changed by NXP Semiconductors.
+ *
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,25 +19,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-/******************************************************************************
- *
- *  The original Work has been changed by NXP Semiconductors.
- *
- *  Copyright (C) 2015 NXP Semiconductors
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
- ******************************************************************************/
 
 /*
  *  Import and export general routing data using a XML file.
@@ -159,7 +146,7 @@ bool RouteDataSet::initialize ()
 void RouteDataSet::deleteDatabase ()
 {
     static const char fn [] = "RouteDataSet::deleteDatabase";
-    ALOGD ("%s: default db size=%u; sec elem db size=%u", fn, mDefaultRouteDatabase.size(), mSecElemRouteDatabase.size());
+    ALOGD ("%s: default db size=%zu; sec elem db size=%zu", fn, mDefaultRouteDatabase.size(), mSecElemRouteDatabase.size());
     Database::iterator it;
 
     for (it = mDefaultRouteDatabase.begin(); it != mDefaultRouteDatabase.end(); it++)
@@ -287,7 +274,7 @@ bool RouteDataSet::saveToFile (const char* routesXml)
     actualWritten = fwrite (routesXml, sizeof(char), strlen(routesXml), fh);
     retval = actualWritten == strlen(routesXml);
     fclose (fh);
-    ALOGD ("%s: wrote %u bytes", fn, actualWritten);
+    ALOGD ("%s: wrote %zu bytes", fn, actualWritten);
     if (retval == false)
         ALOGE ("%s: error during write", fn);
 
@@ -334,7 +321,7 @@ bool RouteDataSet::loadFromFile (std::string& routesXml)
         routesXml.append (buffer, actual);
     }
     fclose (fh);
-    ALOGD ("%s: read %u bytes", fn, routesXml.length());
+    ALOGD ("%s: read %zu bytes", fn, routesXml.length());
     return true;
 }
 
