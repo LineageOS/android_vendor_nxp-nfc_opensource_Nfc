@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  * Not a Contribution.
  *
  * Copyright (C) 2015 NXP Semiconductors
@@ -183,6 +183,9 @@ public class NativeNfcManager implements DeviceHost {
         Log.d(TAG,"disableDtaMode : entry");
         doDisableDtaMode();
     }
+
+    @Override
+    public native byte[] getAdditionalConfigOptions();
 
     private native boolean doDeinitialize();
 

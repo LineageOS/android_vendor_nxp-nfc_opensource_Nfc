@@ -491,6 +491,8 @@ public class NfcService implements DeviceHostListener {
     private final static Boolean multiReceptionMode = Boolean.TRUE;
     private final static Boolean unicastReceptionMode = Boolean.FALSE;
     boolean mIsSentUnicastReception = false;
+    boolean mLegacyTransactionEvent = false;
+
 
     public void enforceNfcSeAdminPerm(String pkg) {
         if (pkg == null) {
@@ -1323,6 +1325,13 @@ public class NfcService implements DeviceHostListener {
                     Log.i(TAG, "Calling Jcop Download");
                     jcopOsDownload();
                 }
+            }
+
+            byte[] additionalConfigOptions = mDeviceHost.getAdditionalConfigOptions();
+
+            if(additionalConfigOptions.length > 0 && additionalConfigOptions[0] == (byte)0x01) {
+                Log.w(TAG, "Legacy Transaction Event Behavior");
+                mLegacyTransactionEvent = true;
             }
 
             initSoundPool();
@@ -3543,18 +3552,7 @@ public class NfcService implements DeviceHostListener {
             if (DBG) Log.d(TAG, "notifyCheckCertResult() " + pkg + ", success=" + success);
 
             NfcService.this.enforceNfceeAdminPerm(pkg);
-            //NfcPermissions.enforceAdminPermissions(mContext);
             mNxpNfcController.setResultForX509Certificates(success);
-/*            synchronized (mWaitOMACheckCert) {
-                if (mWaitOMACheckCert != null) {
-                    if (success) {
-                        mHasOMACert = true;
-                    } else {
-                        mHasOMACert = false;
-                    }
-                    mWaitOMACheckCert.notify();
-                }
-            }*/
         }
 
         @Override
@@ -4369,6 +4367,7 @@ public class NfcService implements DeviceHostListener {
 
                         if (receptionMode == multiReceptionMode) {
                             // if multicast reception for GSMA
+                            if(DBG) Log.d(TAG, "multicast in SE DELIVER INTENT: " + gsmaIntent.toString());
                             mContext.sendBroadcast(gsmaIntent);
                         } else {
                             // if unicast reception for GSMA
@@ -4377,10 +4376,11 @@ public class NfcService implements DeviceHostListener {
                                     //start gsma
                                     gsmaIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                                     mContext.startActivity(gsmaIntent);
+                                    if(DBG) Log.d(TAG, "unicast in SE DELIVER INTENT: " + gsmaIntent.toString());
                                     mIsSentUnicastReception = true;
                                 }
                             } catch (Exception e) {
-                                if (DBG) Log.d(TAG, "Exception: " + e.getMessage());
+                                Log.e(TAG, "Exception: " + e.getMessage());
                             }
                         }
                     } else {
@@ -4455,19 +4455,19 @@ public class NfcService implements DeviceHostListener {
 
                 case MSG_CARD_EMULATION:
                     if (DBG) Log.d(TAG, "Card Emulation message");
-                    /* Tell the host-emu manager an AID has been selected on
-                     * a secure element.
-                     */
-                    if (mCardEmulationManager != null) {
-                        mCardEmulationManager.onOffHostAidSelected();
-                    }
-                    Pair<byte[], Pair> transactionInfo = (Pair<byte[], Pair>) msg.obj;
-                    Pair<byte[], Integer> dataSrcInfo = (Pair<byte[], Integer>) transactionInfo.second;
-
-                    String gsmaSrc = "";
-                    String gsmaDataAID = toHexString(transactionInfo.first, 0, transactionInfo.first.length);
                     {
-                        Log.d(TAG, "Event source " + dataSrcInfo.second);
+                        /* Tell the host-emu manager an AID has been selected on
+                         * a secure element.
+                         */
+                        if (mCardEmulationManager != null) {
+                            mCardEmulationManager.onOffHostAidSelected();
+                        }
+                        Pair<byte[], Pair> transactionInfo = (Pair<byte[], Pair>) msg.obj;
+                        Pair<byte[], Integer> dataSrcInfo = (Pair<byte[], Integer>) transactionInfo.second;
+
+                        String gsmaSrc = "";
+                        String gsmaDataAID = toHexString(transactionInfo.first, 0, transactionInfo.first.length);
+                        Log.d(TAG, "Event source: " + dataSrcInfo.second);
 
                         String evtSrc = "";
                         if(dataSrcInfo.second == UICC_ID_TYPE) {
@@ -4477,35 +4477,36 @@ public class NfcService implements DeviceHostListener {
                             evtSrc = NxpConstants.SMART_MX_ID;
                             gsmaSrc = "ESE";
                         }
-                        /* Send broadcast ordered */
-                        Intent TransactionIntent = new Intent();
-                        TransactionIntent.setAction(NxpConstants.ACTION_TRANSACTION_DETECTED);
-                        TransactionIntent.putExtra(NxpConstants.EXTRA_AID, transactionInfo.first);
-                        TransactionIntent.putExtra(NxpConstants.EXTRA_DATA, dataSrcInfo.first);
-                        TransactionIntent.putExtra(NxpConstants.EXTRA_SOURCE, evtSrc);
-
-                        if (DBG) {
-                            Log.d(TAG, "Start Activity Card Emulation event");
-                        }
+                        /* Send broadcast */
+                        Intent aidIntent = new Intent();
+                        aidIntent.setAction(ACTION_AID_SELECTED);
+                        aidIntent.putExtra(EXTRA_AID, transactionInfo.first);
+                        aidIntent.putExtra("com.android.nfc_extras.extra.SE_NAME", evtSrc);
+                        if (DBG) Log.d(TAG, "Broadcasting " + ACTION_AID_SELECTED);
+                        sendSeBroadcast(aidIntent);
                         mIsSentUnicastReception = false;
-                        mContext.sendBroadcast(TransactionIntent, NfcPermissions.NFC_PERMISSION);
+
+                        if(mLegacyTransactionEvent) {
+                            /* Send broadcast ordered */
+                            Intent TransactionIntent = new Intent();
+                            TransactionIntent.setAction(NxpConstants.ACTION_TRANSACTION_DETECTED);
+                            TransactionIntent.putExtra(NxpConstants.EXTRA_AID, transactionInfo.first);
+                            TransactionIntent.putExtra(NxpConstants.EXTRA_DATA, dataSrcInfo.first);
+                            TransactionIntent.putExtra(NxpConstants.EXTRA_SOURCE, evtSrc);
+
+                            if (DBG) Log.d(TAG, "Start Activity Card Emulation event");
+                            mContext.sendBroadcast(TransactionIntent, NfcPermissions.NFC_PERMISSION);
+
+                            /* Send "transaction events" to all authorized/registered components" */
+                            Intent evtIntent = new Intent();
+                            evtIntent.setAction(NxpConstants.ACTION_MULTI_EVT_TRANSACTION);
+                            evtIntent.setData(Uri.parse("nfc://secure:0/"+ gsmaSrc+"/"+ gsmaDataAID));
+                            evtIntent.putExtra(NxpConstants.EXTRA_GSMA_AID, transactionInfo.first);
+                            evtIntent.putExtra(NxpConstants.EXTRA_GSMA_DATA, dataSrcInfo.first);
+                            if (DBG) Log.d(TAG, "Broadcasting " + NxpConstants.ACTION_MULTI_EVT_TRANSACTION);
+                            sendMultiEvtBroadcast(evtIntent);
+                        }
                     }
-                    /* Send broadcast */
-                    Intent aidIntent = new Intent();
-                    aidIntent.setAction(ACTION_AID_SELECTED);
-                    aidIntent.putExtra(EXTRA_AID, transactionInfo.first);
-                    if (DBG) Log.d(TAG, "Broadcasting " + ACTION_AID_SELECTED);
-                    sendSeBroadcast(aidIntent);
-
-                    /* Send "transaction events" to all authorized/registered components" */
-                    Intent evtIntent = new Intent();
-                    evtIntent.setAction(NxpConstants.ACTION_MULTI_EVT_TRANSACTION);
-                    evtIntent.setData(Uri.parse("nfc://secure:0/"+ gsmaSrc+"/"+ gsmaDataAID));
-                    evtIntent.putExtra(NxpConstants.EXTRA_GSMA_AID, transactionInfo.first);
-                    evtIntent.putExtra(NxpConstants.EXTRA_GSMA_DATA, dataSrcInfo.first);
-                    Log.d(TAG, "Broadcasting " + NxpConstants.ACTION_MULTI_EVT_TRANSACTION);
-                    sendMultiEvtBroadcast(evtIntent);
-
                     break;
 
                 case MSG_CONNECTIVITY_EVENT:
@@ -4802,30 +4803,30 @@ public class NfcService implements DeviceHostListener {
             ComponentName unicastComponent = null;
             if(packageList.size() == 0) {
                 Log.d(TAG, "No packages to send broadcast.");
-                unicastComponent = mNxpNfcController.getUnicastPackage();
+                unicastComponent = mNxpNfcController.getUnicastPackage(intent);
                 if(unicastComponent != null)
                 {
                     intent.setComponent(unicastComponent);
                     try {
                         //start gsma
-                        Log.d(TAG, "Starting activity uincast Pkg"+unicastComponent.flattenToString());
+                        Log.d(TAG, "Starting activity unicast pkg: " + unicastComponent.flattenToString());
                         intent.addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES);
                         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         if(mContext.getPackageManager().resolveActivity(intent, 0) != null)
                         {
                             mContext.startActivity(intent);
                         } else {
-                            Log.d(TAG, "Intent not resolved");
+                            Log.w(TAG, "Intent not resolved: " + intent.toString());
                         }
                     } catch (Exception e) {
-                        if (DBG) Log.d(TAG, "Exception: " + e.getMessage());
+                        if(DBG) Log.e(TAG, "Exception: " + e.getMessage());
                     }
                 }
                 return;
             }
 
             for(int i=0; i<packageList.size(); i++) {
-                Log.d(TAG,"MultiEvt Enabled Application packageName: " + packageList.get(i));
+                if(DBG) Log.d(TAG,"MultiEvt Enabled Application packageName: " + packageList.get(i));
                 intent.setPackage(packageList.get(i));
                 mContext.sendBroadcast(intent, NxpConstants.PERMISSIONS_TRANSACTION_EVENT);
             }

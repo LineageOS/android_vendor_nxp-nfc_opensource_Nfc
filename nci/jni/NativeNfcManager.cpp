@@ -445,6 +445,8 @@ void multiprotocol_clear_flag(union sigval);
 void set_transcation_stat(bool result);
 #endif
 
+static jbyteArray nfcManager_getAdditionalConfigOptions(JNIEnv *e, jobject o);
+
 /////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////
 
@@ -4233,7 +4235,9 @@ static JNINativeMethod gMethods[] =
     {"doEnableDtaMode", "()V",
             (void*) nfcManager_doEnableDtaMode},
     {"doDisableDtaMode", "()V",
-            (void*) nfcManager_doDisableDtaMode}
+            (void*) nfcManager_doDisableDtaMode},
+    {"getAdditionalConfigOptions", "()[B",
+            (void *)nfcManager_getAdditionalConfigOptions}
 };
 
 
@@ -6121,6 +6125,27 @@ UINT16 getrfDiscoveryDuration()
     return discDuration;
 }
 #endif
+
+static jbyteArray nfcManager_getAdditionalConfigOptions(JNIEnv* e, jobject /* o */) {
+    char configoptions[256] = {0};
+    long retlen = 0;
+    jbyteArray result = NULL;
+    GetNxpByteArrayValue (NAME_NXP_ADDITIONAL_CONFIG_OPTIONS, configoptions, sizeof(configoptions), &retlen);
+    if(retlen > 0)
+    {
+        result = e->NewByteArray(retlen);
+        if(result != NULL)
+        {
+            e->SetByteArrayRegion(result, 0, retlen, (jbyte *) configoptions);
+        }
+    }
+    else
+    {
+        result = e->NewByteArray(0);
+    }
+    return result;
+
+}
 
 }
 /* namespace android */

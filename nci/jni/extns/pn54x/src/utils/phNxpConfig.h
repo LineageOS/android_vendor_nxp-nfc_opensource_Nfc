@@ -90,6 +90,7 @@ int updateNxpConfigTimestamp();
 #define NAME_NXP_UICC_WIRED_PRT_MASK         "NXP_UICC_WIRED_PRT_MASK"
 #define NAME_NXP_ESE_WIRED_PRT_MASK          "NXP_ESE_WIRED_PRT_MASK"
 #define NAME_NXP_ENABLE_ADD_AID              "NXP_ENABLE_ADD_AID"
+#define NAME_NXP_ADDITIONAL_CONFIG_OPTIONS   "NXP_ADDITIONAL_CONFIG_OPTIONS"
 /* default configuration */
 #define default_storage_location "/data/nfc"
 

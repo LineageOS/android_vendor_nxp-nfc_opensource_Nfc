@@ -415,4 +415,6 @@ public interface DeviceHost {
 
     public void disableDtaMode();
 
+    public byte[] getAdditionalConfigOptions();
+
 }
