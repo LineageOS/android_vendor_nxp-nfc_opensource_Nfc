@@ -199,7 +199,7 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
     }
     if (GetNxpNumValue (NAME_NXP_UICC_WIRED_PRT_MASK, (void*)&num, sizeof(num)))
     {
-        ALOGD ("%d: NAME_NXP_UICC_WIRED_PRT_MASK", num);
+        ALOGD ("%lu: NAME_NXP_UICC_WIRED_PRT_MASK", num);
         gUICCVirtualWiredProtectMask = num;
     }
     if (GetNxpNumValue (NAME_NXP_WIRED_MODE_RF_FIELD_ENABLE, (void*)&num, sizeof(num)))
@@ -848,7 +848,7 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
         max_tech_mask = SecureElement::getInstance().getSETechnology(defaultTechSeID);
 
         ALOGD ("%s:defaultTechSeID:%x", fn, defaultTechSeID);
-        ALOGD ("%s:Technologies supported by defaultTechSeID :%x", fn, max_tech_mask);
+        ALOGD ("%s:Technologies supported by defaultTechSeID :%lx", fn, max_tech_mask);
 
         if(defaultTechSeID == 0x402)
         {

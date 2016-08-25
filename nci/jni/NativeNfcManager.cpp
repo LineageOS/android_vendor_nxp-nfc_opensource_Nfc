@@ -385,7 +385,6 @@ static void nfcManager_doPrbsOn(JNIEnv* e, jobject o, jint prbs, jint hw_prbs, j
 static void nfcManager_Enablep2p(JNIEnv* e, jobject o, jboolean p2pFlag);
 //self test end
 static void nfcManager_setProvisionMode(JNIEnv* e, jobject o, jboolean provisionMode);
-static bool nfcManager_doPartialInitialize ();
 static bool nfcManager_doPartialDeInitialize();
 #if(NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE)
 static int nfcManager_doSelectUicc(JNIEnv* e, jobject o, jint uiccSlot);
@@ -4227,8 +4226,6 @@ static int nfcManager_doSelectUicc(JNIEnv* e, jobject o, jint uiccSlot)
     tNFA_STATUS status = NFC_STATUS_FAILED;
     ALOGD("%s: enter", __FUNCTION__);
     ALOGD("%s: sUicc1CntxLen : 0x%02x  sUicc2CntxLen : 0x%02x", __FUNCTION__,dualUiccInfo.sUicc1CntxLen,dualUiccInfo.sUicc2CntxLen);
-    tNFA_STATUS stat = NFA_STATUS_FAILED;
-    BOOLEAN result =FALSE;
     UINT16 RegAddr = 0xA0EC;
     uint8_t bitVal;
     eScreenState_t last_screen_state_request;
@@ -4329,14 +4326,14 @@ static int nfcManager_doSelectUicc(JNIEnv* e, jobject o, jint uiccSlot)
         sIsSecElemDetected = sIsSecElemSelected;
     }
 
-    ALOGD("%s : gSeDiscoverycount = %d", __FUNCTION__ , gSeDiscoverycount);
+    ALOGD("%s : gSeDiscoverycount = %ld", __FUNCTION__ , gSeDiscoverycount);
     /*Get the SWP1 and SWP2 lines status*/
     if (NFA_STATUS_OK == GetSwpStausValue())
     {
         /*The SWP lines enabled and SE's discovered*/
         if (gSeDiscoverycount < gActualSeCount)
         {
-            ALOGD("%s : Wait for ESE to discover, gdisc_timeout = %d", __FUNCTION__, gdisc_timeout);
+            ALOGD("%s : Wait for ESE to discover, gdisc_timeout = %ld", __FUNCTION__, gdisc_timeout);
             SyncEventGuard g(gNfceeDiscCbEvent);
             if(gNfceeDiscCbEvent.wait(gdisc_timeout) == false)
             {
@@ -4977,12 +4974,12 @@ static int nfcManager_doJcosDownload(JNIEnv* /* e */, jobject /* o */)
 {
 #if (NFC_NXP_ESE == TRUE)
     ALOGD ("%s: enter", __FUNCTION__);
-    tNFA_STATUS status, tStatus;
     bool stat = false;
 #if 0
     UINT8 param = 0;
+    tNFA_STATUS tStatus = NFA_STATUS_FAILED;
 #endif
-    status = NFA_STATUS_FAILED, tStatus= NFA_STATUS_FAILED;
+    tNFA_STATUS status = NFA_STATUS_FAILED;
 
     if (sRfEnabled) {
         // Stop RF Discovery if we were polling
@@ -5164,7 +5161,7 @@ static void nfcManager_doSetScreenState (JNIEnv* /* e */, jobject /* o */, jint 
 
     if(GetNxpNumValue(NAME_NXP_CORE_SCRN_OFF_AUTONOMOUS_ENABLE,&auto_num ,sizeof(auto_num)))
             {
-                 ALOGD ("%s: enter; NAME_NXP_CORE_SCRN_OFF_AUTONOMOUS_ENABLE = %02x", __FUNCTION__, auto_num);
+                 ALOGD ("%s: enter; NAME_NXP_CORE_SCRN_OFF_AUTONOMOUS_ENABLE = %02lx", __FUNCTION__, auto_num);
             }
             if(auto_num == 0x01)
             {
@@ -5191,7 +5188,7 @@ static void nfcManager_doSetScreenState (JNIEnv* /* e */, jobject /* o */, jint 
             }
             else
             {
-                 ALOGD ("%s: enter; NAME_NXP_CORE_SCRN_OFF_AUTONOMOUS_ENABLE = %02x", __FUNCTION__, auto_num);
+                 ALOGD ("%s: enter; NAME_NXP_CORE_SCRN_OFF_AUTONOMOUS_ENABLE = %02lx", __FUNCTION__, auto_num);
             }
             if(buffer)
             {
@@ -5234,7 +5231,6 @@ static void nfcManager_doSetScreenState (JNIEnv* /* e */, jobject /* o */, jint 
 *******************************************************************************/
 static void nfcManager_doSetScreenOrPowerState (JNIEnv* e, jobject o, jint state)
 {
-    tNFA_STATUS stat = NFA_STATUS_OK;
     ALOGE ("%s: Enter", __FUNCTION__);
     if (state <= NFA_SCREEN_STATE_UNLOCKED ) // SCREEN_STATE
         nfcManager_doSetScreenState(e, o, state);
@@ -6132,7 +6128,7 @@ static int nfcManager_staticDualUicc_Precondition(int uiccSlot)
 
     if(GetNxpNumValue (NAME_NXP_DUAL_UICC_ENABLE, (void*)&uicc_active_state, sizeof(uicc_active_state)))
     {
-        ALOGD ("NXP_DUAL_UICC_ENABLE  : 0x%02x",uicc_active_state);
+        ALOGD ("NXP_DUAL_UICC_ENABLE  : 0x%02lx",uicc_active_state);
     }
     else
     {
@@ -6162,7 +6158,7 @@ static int nfcManager_staticDualUicc_Precondition(int uiccSlot)
     }
     else if((uiccSlot != 0x01) && (uiccSlot != 0x02))
     {
-        ALOGE("%s: Invalid slot id");
+        ALOGE("%s: Invalid slot id", __FUNCTION__);
         retStat = DUAL_UICC_ERROR_INVALID_SLOT;
     }
     else if(get_transcation_stat() == true)
@@ -6443,7 +6439,7 @@ static jint nfcManager_SWPSelfTest(JNIEnv* e, jobject o, jint ch)
     return status;
 }
 
-
+#if 0
 /*******************************************************************************
  **
  ** Function:       nfcManager_doPartialInitialize
@@ -6502,6 +6498,7 @@ static bool nfcManager_doPartialInitialize ()
     ALOGD("%s exit status = 0x%x",  __FUNCTION__ ,gsNfaPartialEnabled);
     return gsNfaPartialEnabled;
 }
+#endif
 /*******************************************************************************
  **
  ** Function:       nfcManager_doPartialDeInitialize

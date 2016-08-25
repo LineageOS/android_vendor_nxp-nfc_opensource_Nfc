@@ -129,7 +129,6 @@ static IntervalTimer sReconnectNtfTimer ;
 static jboolean     sWriteOk = JNI_FALSE;
 static jboolean     sWriteWaitingForComplete = JNI_FALSE;
 static bool         sFormatOk = false;
-static bool         sReadOnlyOk = false;
 #if(NXP_EXTNS == TRUE && NFC_NXP_NON_STD_CARD == TRUE)
 static bool         sNeedToSwitchRf = false;
 #endif
@@ -640,7 +639,6 @@ static jboolean nativeNfcTag_doWrite (JNIEnv* e, jobject, jbyteArray buf)
     const int maxBufferSize = 1024;
     UINT8 buffer[maxBufferSize] = { 0 };
     UINT32 curDataSize = 0;
-    int handle = sCurrentConnectedHandle;
 
     ScopedByteArrayRO bytes(e, buf);
     UINT8* p_data = const_cast<UINT8*>(reinterpret_cast<const UINT8*>(&bytes[0])); // TODO: const-ness API bug in NFA_RwWriteNDef!
@@ -1169,7 +1167,6 @@ static int reSelect (tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded)
 static bool switchRfInterface (tNFA_INTF_TYPE rfInterface)
 {
     ALOGD ("%s: rf intf = %d", __FUNCTION__, rfInterface);
-    NfcTag& natTag = NfcTag::getInstance ();
 
     if (sCurrentConnectedTargetProtocol != NFC_PROTOCOL_ISO_DEP)
     {
@@ -1416,7 +1413,6 @@ TheEnd:
 *******************************************************************************/
 void nativeNfcTag_doTransceiveStatus (tNFA_STATUS status, uint8_t* buf, uint32_t bufLen)
 {
-    int handle = sCurrentConnectedHandle;
     SyncEventGuard g (sTransceiveEvent);
     ALOGD ("%s: data len=%d", __FUNCTION__, bufLen);
 
@@ -1474,7 +1470,6 @@ static jbyteArray nativeNfcTag_doTransceive (JNIEnv* e, jobject o, jbyteArray da
     int timeout = NfcTag::getInstance ().getTransceiveTimeout (sCurrentConnectedTargetType);
     ALOGD ("%s: enter; raw=%u; timeout = %d", __FUNCTION__, raw, timeout);
 
-    int handle = sCurrentConnectedHandle;
     bool waitOk = false;
     bool isNack = false;
     jint *targetLost = NULL;
@@ -1848,7 +1843,7 @@ static jint nativeNfcTag_doCheckNdef (JNIEnv* e, jobject o, jintArray ndefInfo)
     ALOGD ("%s: try NFA_RwDetectNDef", __FUNCTION__);
     sCheckNdefWaitingForComplete = JNI_TRUE;
 
-    ALOGD ("%s: NfcTag::getInstance ().mTechLibNfcTypes[%d]", __FUNCTION__, NfcTag::getInstance ().mTechLibNfcTypes[handle]);
+    ALOGD ("%s: NfcTag::getInstance ().mTechLibNfcTypes[%d]=%d", __FUNCTION__, handle, NfcTag::getInstance ().mTechLibNfcTypes[handle]);
 
     if (sCurrentConnectedTargetProtocol == NFA_PROTOCOL_MIFARE)
     {
@@ -2337,7 +2332,6 @@ static jboolean nativeNfcTag_doNdefFormat (JNIEnv *e, jobject o, jbyteArray)
 {
     ALOGD ("%s: enter", __FUNCTION__);
     tNFA_STATUS status = NFA_STATUS_OK;
-    int handle = sCurrentConnectedHandle;
 
     // Do not try to format if tag is already deactivated.
     if (NfcTag::getInstance ().isActivated () == false)
@@ -2487,7 +2481,6 @@ static jboolean nativeNfcTag_doMakeReadonly (JNIEnv *e, jobject o, jbyteArray)
 {
     jboolean result = JNI_FALSE;
     tNFA_STATUS status = NFA_STATUS_OK;
-    int handle = sCurrentConnectedHandle;
 
     ALOGD ("%s", __FUNCTION__);
 

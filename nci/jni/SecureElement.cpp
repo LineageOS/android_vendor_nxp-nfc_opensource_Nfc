@@ -1435,8 +1435,9 @@ bool SecureElement::transceive (UINT8* xmitBuffer, INT32 xmitBufferSize, UINT8* 
     mTransceiveWaitOk = false;
     UINT8 newSelectCmd[NCI_MAX_AID_LEN + 10];
 #if(NXP_EXTNS == TRUE)
-    bool recovery;
+#if((NFC_NXP_ESE_VER == JCOP_VER_3_1) || (NFC_NXP_ESE_VER == JCOP_VER_3_2))
     bool isEseAccessSuccess = false;
+#endif
 #endif
     ALOGD ("%s: enter; xmitBufferSize=%ld; recvBufferMaxSize=%ld; timeout=%ld", fn, xmitBufferSize, recvBufferMaxSize, timeoutMillisec);
 
@@ -1494,7 +1495,7 @@ bool SecureElement::transceive (UINT8* xmitBuffer, INT32 xmitBufferSize, UINT8* 
         while(hold_the_transceive == true)
         {
              android::start_timer_msec(&start_timer);
-             ALOGD("%s: holding the transceive for %d ms.\n", fn, (timeoutMillisec - time_elapsed));
+             ALOGD("%s: holding the transceive for %ld ms.\n", fn, (timeoutMillisec - time_elapsed));
              if(sSPIPrioSessionEndEvent.wait(timeoutMillisec - time_elapsed)== FALSE)
              {
                  ALOGE ("%s: wait response timeout \n", fn);
@@ -2498,7 +2499,7 @@ bool SecureElement::getAtr(jint seID, UINT8* recvBuffer, INT32 *recvBufferSize)
     tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
     UINT8 reg_index = 0x01;
     ALOGD("%s: enter ;seID=0x%X", fn, seID);
-    int timeoutMillisec = 30000;
+
 
 #if (NFC_NXP_ESE ==  TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
     if(!isWiredModeAllowedInRfState())
@@ -2507,6 +2508,7 @@ bool SecureElement::getAtr(jint seID, UINT8* recvBuffer, INT32 *recvBufferSize)
         return false;
     }
 #if((NFC_NXP_ESE_VER == JCOP_VER_3_1) || (NFC_NXP_ESE_VER == JCOP_VER_3_2))
+    int timeoutMillisec = 30000;
     if (NFC_GetEseAccess((void *)&timeoutMillisec) != 0)
     {
         ALOGE ("%s: NFC_ReqWiredAccess timeout", fn);
@@ -3294,7 +3296,7 @@ tNFA_STATUS SecureElement::SecElem_EeModeSet(uint16_t handle, uint8_t mode)
  **********************************************************************************/
 UINT16 SecureElement::getEeStatus(UINT16 eehandle)
 {
-    int currentUicc, i;
+    int i;
     UINT16 ee_status = NFA_EE_STATUS_REMOVED;
     ALOGD("%s  num_nfcee_present = %d",__FUNCTION__,mNfceeData_t.mNfceePresent);
 
