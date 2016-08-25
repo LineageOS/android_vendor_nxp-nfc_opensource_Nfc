@@ -525,7 +525,6 @@ public class RegisteredNfcFServicesCache {
             }
             return false;
         }
-
     }
 
     public boolean registerSystemCodeForService(int userId, int uid,

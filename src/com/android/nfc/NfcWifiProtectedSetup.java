@@ -16,6 +16,7 @@
 package com.android.nfc;
 
 
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.net.wifi.WifiConfiguration;
@@ -79,7 +80,9 @@ public final class NfcWifiProtectedSetup {
         }
 
         if (wifiConfiguration != null &&!UserManager.get(context).hasUserRestriction(
-                UserManager.DISALLOW_CONFIG_WIFI, UserHandle.CURRENT)) {
+                UserManager.DISALLOW_CONFIG_WIFI,
+                // hasUserRestriction does not support UserHandle.CURRENT.
+                UserHandle.of(ActivityManager.getCurrentUser()))) {
             Intent configureNetworkIntent = new Intent()
                     .putExtra(EXTRA_WIFI_CONFIG, wifiConfiguration)
                     .setClass(context, ConfirmConnectToWifiNetworkActivity.class)

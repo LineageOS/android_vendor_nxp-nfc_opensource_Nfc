@@ -215,7 +215,7 @@ public class BeamShareActivity extends Activity {
                 shareData = new BeamShareData(null, uriArray, myUserHandle, 0);
             } else {
                 // No uris left
-                shareData = new BeamShareData(null, uriArray, myUserHandle, 0);
+                shareData = new BeamShareData(null, null, myUserHandle, 0);
             }
         } else if (mNdefMessage != null) {
             shareData = new BeamShareData(mNdefMessage, null, myUserHandle, 0);

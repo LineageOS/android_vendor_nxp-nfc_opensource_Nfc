@@ -1988,6 +1988,7 @@ if ((signal(SIGABRT, sig_handler) == SIG_ERR) &&
                 PeerToPeer::getInstance().initialize ();
                 PeerToPeer::getInstance().handleNfcOnOff (true);
 
+
 #if(NXP_EXTNS == TRUE)
                 ALOGD("gSeDiscoverycount = %ld", gSeDiscoverycount);
                 if (NFA_STATUS_OK == GetSwpStausValue())
@@ -5059,7 +5060,6 @@ bool isNfcInitializationDone()
 {
     return sIsNfaEnabled;
 }
-
 /*******************************************************************************
 **
 ** Function:        StoreScreenState
@@ -5076,6 +5076,7 @@ static void StoreScreenState(int state)
     nfc_ncif_storeScreenState(state);
     ALOGD ("%s: exit", __FUNCTION__);
 }
+
 
 /*******************************************************************************
 **
@@ -5951,10 +5952,12 @@ void checkforNfceeConfig()
                     retry_cnt++;
                 }
             }
+
             if(check_cnt <= retry_cnt)
                 ALOGD("eSE Not Configured");
             retry_cnt=0;
         }
+
     }
     RoutingManager::getInstance().handleSERemovedNtf();
     sCheckNfceeFlag = 0;
@@ -5962,6 +5965,7 @@ void checkforNfceeConfig()
 #endif
 
 #if(NXP_EXTNS == TRUE)
+
 static void nfaNxpSelfTestNtfTimerCb (union sigval)
 {
     ALOGD ("%s", __FUNCTION__);

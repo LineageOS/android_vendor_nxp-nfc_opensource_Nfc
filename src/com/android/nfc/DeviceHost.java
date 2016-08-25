@@ -294,6 +294,7 @@ public interface DeviceHost {
     public boolean routeNfcid2(byte[] nfcid2, byte[] syscode, byte[] optparam);
 
     public boolean unrouteNfcid2(byte[] nfcid2);
+
     public boolean unrouteAid(byte[] aid);
 
     public boolean clearAidTable();

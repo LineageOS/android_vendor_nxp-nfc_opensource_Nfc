@@ -30,15 +30,14 @@ import android.nfc.tech.TagTechnology;
 import android.util.Log;
 import java.io.File;
 
-import java.util.HashMap;
-import java.util.Map;
 import com.android.nfc.DeviceHost;
 import com.android.nfc.LlcpException;
 import com.android.nfc.NfcDiscoveryParameters;
+
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.HashMap;
-
+import java.util.Map;
 
 /**
  * Native interface to the NFC Manager functions

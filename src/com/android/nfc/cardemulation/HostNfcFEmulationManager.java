@@ -330,7 +330,6 @@ public class HostNfcFEmulationManager {
                 }
             }
         }
-
     }
 
     static String bytesToString(byte[] bytes, int offset, int length) {
