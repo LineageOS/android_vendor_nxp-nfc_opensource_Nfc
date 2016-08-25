@@ -46,7 +46,7 @@ extern "C"
 
 int GetNxpStrValue (const char* name, char* p_value, unsigned long len);
 int GetNxpNumValue (const char* name, void* p_value, unsigned long len);
-int GetNxpByteArrayValue (const char* name, char* pValue, long bufflen, long *len);
+int GetNxpByteArrayValue (const char* name, char* pValue, unsigned long bufflen, long *len);
 void resetNxpConfig (void);
 int isNxpConfigModified ();
 int updateNxpConfigTimestamp ();
@@ -94,6 +94,58 @@ int updateNxpConfigTimestamp ();
 #define NAME_NXP_ESE_WIRED_PRT_MASK          "NXP_ESE_WIRED_PRT_MASK"
 #define NAME_NXP_ENABLE_ADD_AID              "NXP_ENABLE_ADD_AID"
 #define NAME_NXP_ADDITIONAL_CONFIG_OPTIONS   "NXP_ADDITIONAL_CONFIG_OPTIONS"
+
+/**
+ *  @brief defines the different config files used.
+ */
+
+#define config_name_mtp         "libnfc-mtp_default.conf"
+#define config_name_mtp1        "libnfc-mtp_rf1.conf"
+#define config_name_mtp2        "libnfc-mtp_rf2.conf"
+#define config_name_qrd         "libnfc-qrd_default.conf"
+#define config_name_qrd1        "libnfc-qrd_rf1.conf"
+#define config_name_qrd2        "libnfc-qrd_rf2.conf"
+#define config_name_default     "libnfc-nxp_default.conf"
+
+/**
+ *  @brief defines the maximum length of the target name.
+ */
+
+#define MAX_SOC_INFO_NAME_LEN (15)
+
+/**
+ *  @brief Defines the type of hardware platform.
+ */
+
+#define QRD_HW_PLATFORM  "qrd"
+#define MTP_HW_PLATFORM  "mtp"
+
+/**
+ *  @brief Defines the path where the hardware platform details are present.
+ */
+
+#define SYSFS_HW_PLATFORM_PATH1  "/sys/devices/soc0/hw_platform"
+#define SYSFS_HW_PLATFORM_PATH2   "/sys/devices/system/soc/soc0/hw_platform"
+
+/**
+ *  @brief Defines the path where the soc_id details are present.
+ */
+
+#define SYSFS_SOCID_PATH1    "/sys/devices/soc0/soc_id"
+#define SYSFS_SOCID_PATH2    "/sys/devices/system/soc/soc0/id"
+
+/**
+ *  @brief Defines the maximum length of the config file name.
+ */
+
+#define MAX_DATA_CONFIG_PATH_LEN 64
+
+/**
+ *  @brief Defines whether debugging is enabled or disabled.
+ */
+
+#define DEBUG 0
+
 /* default configuration */
 #define default_storage_location "/data/nfc"
 
