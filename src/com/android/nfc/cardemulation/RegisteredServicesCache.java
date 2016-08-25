@@ -45,6 +45,7 @@ import android.util.AtomicFile;
 import android.util.Log;
 import android.util.SparseArray;
 import android.util.Xml;
+import com.nxp.nfc.NxpConstants;
 
 import com.android.internal.util.FastXmlSerializer;
 import com.google.android.collect.Maps;
@@ -76,6 +77,7 @@ public class RegisteredServicesCache {
     static final String XML_INDENT_OUTPUT_FEATURE = "http://xmlpull.org/v1/doc/features.html#indent-output";
     static final String TAG = "RegisteredServicesCache";
     static final boolean DEBUG = true;
+    static final String SERVICE_STATE_FILE_VERSION="1.0";
 
     final Context mContext;
     final AtomicReference<BroadcastReceiver> mReceiver;
@@ -356,6 +358,7 @@ public class RegisteredServicesCache {
                 writeDynamicAidsLocked();
             }
             updateServiceStateFromFile(userId);
+            Log.e(TAG,"1"+Thread.currentThread().getStackTrace()[2].getMethodName()+":WriteServiceStateToFile");
             writeServiceStateToFile(userId);
         }
 
@@ -483,10 +486,11 @@ public class RegisteredServicesCache {
     {
         FileInputStream fis = null;
         try {
-             if(NfcService.getInstance().getAidRoutingTableStatus() == 0x00) {
+             /*if(NfcService.getInstance().getAidRoutingTableStatus() == 0x00) {
                  Log.e(TAG, " Aid Routing Table still  availble , No need to disable services");
                  return;
-             }
+             }*/
+             Log.d(TAG, " Reading service state data always from file");
              if(!mServiceStateFile.getBaseFile().exists()) {
                  Log.d(TAG,"mServiceStateFile does not exist");
                  return;
@@ -498,12 +502,29 @@ public class RegisteredServicesCache {
              int currUid = -1;
              ComponentName currComponent = null;
              HashMap<ComponentName ,NQApduServiceInfo> nxpOffHostServiceMap = mRegisteredNxpServicesCache.getApduservicesMaps();
-             boolean state = true;
+             int state = NxpConstants.SERVICE_STATE_ENABLED;
              while (eventType != XmlPullParser.START_TAG &&
                      eventType != XmlPullParser.END_DOCUMENT) {
                  eventType = parser.next();
              }
              String tagName = parser.getName();
+             String fileVersion = "null";
+             /**
+              * Get the version of the Service state file.
+              * if the version is 1.0, service states are stored as integers(0,1,2,3)
+              * or else service states are stored as boolean (true or false)
+              */
+             if("Version".equals(tagName)){
+                 fileVersion = parser.getAttributeValue(null ,"FileVersion");
+                 Log.d(TAG, "ServiceStateFileVersion="+fileVersion);
+                 eventType = parser.next();
+                 while (eventType != XmlPullParser.START_TAG &&
+                         eventType != XmlPullParser.END_DOCUMENT) {
+                     eventType = parser.next();
+                 }
+                 tagName = parser.getName();
+                 Log.e(TAG, "Next Tag="+tagName);
+             }
              if ("services".equals(tagName)) {
                  while (eventType != XmlPullParser.END_DOCUMENT) {
                      tagName = parser.getName();
@@ -521,7 +542,16 @@ public class RegisteredServicesCache {
                                     Log.d(TAG, " curr component "+compString);
                                     Log.d(TAG, " curr uid "+uidString);
                                     Log.d(TAG, " curr state "+stateString);
-                                    if(stateString.equalsIgnoreCase("false")) { state = false;}
+                                    if(fileVersion.equals("null")){
+                                    if(stateString.equalsIgnoreCase("false"))
+                                        state = NxpConstants.SERVICE_STATE_DISABLED;
+                                    else
+                                        state = NxpConstants.SERVICE_STATE_ENABLED;
+                                    }else if(fileVersion.equals("1.0")){
+                                        state = Integer.parseInt(stateString);
+                                        if(state<NxpConstants.SERVICE_STATE_DISABLED || state > NxpConstants.SERVICE_STATE_DISABLING)
+                                            Log.e(TAG, "Invalid Service state");
+                                    }
                                 } catch (NumberFormatException e) {
                                     Log.e(TAG, "could not parse the service attributes");
                                 }
@@ -544,7 +574,7 @@ public class RegisteredServicesCache {
                          }
                          currUid       = -1;
                          currComponent = null;
-                         state         = true;
+                         state         = NxpConstants.SERVICE_STATE_ENABLED;
                      }
 
                      eventType = parser.next();
@@ -566,10 +596,11 @@ public class RegisteredServicesCache {
     private boolean writeServiceStateToFile(int currUserId) {
         FileOutputStream fos = null;
         ArrayList<NQApduServiceInfo> nxpOffHostServiceCache = mRegisteredNxpServicesCache.getApduservicesList();
-        if(NfcService.getInstance().getAidRoutingTableStatus() == 0x00) {
+        /*if(NfcService.getInstance().getAidRoutingTableStatus() == 0x00) {
             Log.e(TAG, " Aid Routing Table still  availble , No need to disable services");
             return false;
-        }
+        }*/
+        Log.e(TAG, " Writing service state Data Always");
         if(currUserId != ActivityManager.getCurrentUser()) {
             return false;
         }
@@ -579,6 +610,9 @@ public class RegisteredServicesCache {
             out.setOutput(fos, "utf-8");
             out.startDocument(null , true);
             out.setFeature(XML_INDENT_OUTPUT_FEATURE, true);
+            out.startTag(null ,"Version");
+            out.attribute(null, "FileVersion", SERVICE_STATE_FILE_VERSION);
+            out.endTag(null ,"Version");
             out.startTag(null ,"services");
             for(int userId = 0; userId < mUserServices.size(); userId++) {
                 final UserServices userServices = mUserServices.valueAt(userId);
@@ -588,11 +622,11 @@ public class RegisteredServicesCache {
                     }
                     out.startTag(null ,"service");
                     out.attribute(null, "component", serviceInfo.getComponent().flattenToString());
-                    Log.d(TAG,"component name"+ serviceInfo.getComponent().flattenToString());
+                    Log.e(TAG,"component name"+ serviceInfo.getComponent().flattenToString());
                     out.attribute(null, "uid", Integer.toString(serviceInfo.getUid()));
-                    Log.d(TAG,"uid name"+ Integer.toString(serviceInfo.getUid()));
-                    out.attribute(null, "serviceState", Boolean.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
-                    Log.d(TAG,"curr name"+ Boolean.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
+                    Log.e(TAG,"uid name"+ Integer.toString(serviceInfo.getUid()));
+                    out.attribute(null, "serviceState", Integer.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
+                    Log.e(TAG,"service State:"+ Integer.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
                     out.endTag(null, "service");
                 }
             }
@@ -604,8 +638,8 @@ public class RegisteredServicesCache {
                 Log.d(TAG,"component name"+ serviceInfo.getComponent().flattenToString());
                 out.attribute(null, "uid", Integer.toString(serviceInfo.getUid()));
                 Log.d(TAG,"uid name"+ Integer.toString(serviceInfo.getUid()));
-                out.attribute(null, "serviceState", Boolean.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
-                Log.d(TAG,"curr name"+ Boolean.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
+                out.attribute(null, "serviceState", Integer.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
+                Log.d(TAG,"service State:"+ Integer.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
                 out.endTag(null, "service");
             }
             out.endTag(null ,"services");
@@ -641,15 +675,16 @@ public class RegisteredServicesCache {
                 Log.e(TAG, "updateServiceState " + entry.getKey());
                 Log.e(TAG, "updateServiceState  " + entry.getValue());
                 if (serviceInfo != null) {
-                    serviceInfo.setServiceState(CardEmulation.CATEGORY_OTHER, entry.getValue());
+                    serviceInfo.enableService(CardEmulation.CATEGORY_OTHER, entry.getValue());
                 } else if ((serviceInfo = nxpOffHostServiceMap.get(componentName)) != null) {
                       // CHECK for GSMA cache
-                      serviceInfo.setServiceState(CardEmulation.CATEGORY_OTHER, entry.getValue());
+                      serviceInfo.enableService(CardEmulation.CATEGORY_OTHER, entry.getValue());
                 } else {
                       Log.e(TAG, "Could not find service " + componentName);
                       return 0xFF;
                 }
             }
+            Log.e(TAG,"2"+Thread.currentThread().getStackTrace()[2].getMethodName()+":WriteServiceStateToFile");
             success = writeServiceStateToFile(userId);
         }
         invalidateCache(ActivityManager.getCurrentUser());
@@ -775,4 +810,15 @@ public class RegisteredServicesCache {
         pw.println("");
     }
 
+    public void updateStatusOfServices(boolean commitStatus) {
+            final UserServices userServices = mUserServices.get(ActivityManager.getCurrentUser());
+            for (NQApduServiceInfo serviceInfo : userServices.services.values()) {
+                if(!serviceInfo.hasCategory(CardEmulation.CATEGORY_OTHER)) {
+                    continue;
+                }
+                serviceInfo.updateServiceCommitStatus(CardEmulation.CATEGORY_OTHER,commitStatus);
+            }
+            Log.e(TAG,"3"+Thread.currentThread().getStackTrace()[2].getMethodName()+":WriteServiceStateToFile");
+            writeServiceStateToFile(ActivityManager.getCurrentUser());
+    }
 }

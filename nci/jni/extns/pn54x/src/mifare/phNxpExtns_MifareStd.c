@@ -3,6 +3,7 @@
  * Not a Contribution.
  *
  * Copyright (C) 2015 NXP Semiconductors
+ * Copyright (C) 2015 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -2124,7 +2125,7 @@ NFCSTATUS phFriNfc_ExtnsTransceive(phNfc_sTransceiveInfo_t *pTransceiveInfo,
         status = phLibNfc_SendIncDecCmd(pTransceiveInfo, &tNciTranscvInfo, Cmd.MfCmd);
 
     }
-    else if( Cmd.MfCmd == phNfc_eMifareRestore )
+    else if(Cmd.MfCmd == phNfc_eMifareRestore)
     {
         pTransceiveInfo->addr = SendRecvBuf[i++];
         length = SendLength - i;
@@ -2139,7 +2140,7 @@ NFCSTATUS phFriNfc_ExtnsTransceive(phNfc_sTransceiveInfo_t *pTransceiveInfo,
     }
     else if ((Cmd.MfCmd == phNfc_eMifareRaw) || (Cmd.MfCmd == phNfc_eMifareTransfer ))
     {
-        pTransceiveInfo->cmd.MfCmd = (phNfc_eMifareCmdList_t)phNciNfc_eT2TRaw;
+        pTransceiveInfo->cmd.MfCmd = (phNfc_eMifareCmdList_t) phNciNfc_eT2TRaw;
         memcpy(pTransceiveInfo->sSendData.buffer, SendRecvBuf, length);
         pTransceiveInfo->sSendData.length = length;
         pTransceiveInfo->sRecvData.length = MAX_BUFF_SIZE;

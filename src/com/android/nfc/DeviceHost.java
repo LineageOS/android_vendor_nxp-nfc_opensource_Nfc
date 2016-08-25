@@ -58,9 +58,9 @@ public interface DeviceHost {
          * Notifies connectivity event from the SE
          */
         public void onConnectivityEvent(int evtSrc);
-        public void onHostCardEmulationActivated();
-        public void onHostCardEmulationData(byte[] data);
-        public void onHostCardEmulationDeactivated();
+        public void onHostCardEmulationActivated(int technology);
+        public void onHostCardEmulationData(int technology, byte[] data);
+        public void onHostCardEmulationDeactivated(int technology);
         public void onAidRoutingTableFull();
 
         /**
@@ -114,6 +114,8 @@ public interface DeviceHost {
         public void onETSIReaderModeStopConfig(int disc_ntf_timeout);
 
         public void onETSIReaderModeSwpTimeout(int disc_ntf_timeout);
+
+        public void onUiccStatusEvent(int uiccStat);
     }
 
     public interface TagEndpoint {
@@ -392,6 +394,13 @@ public interface DeviceHost {
 
     //boolean disableScreenOffSuspend();
 
+    public void registerT3tIdentifier(byte[] t3tIdentifier);
+
+    public void deregisterT3tIdentifier(byte[] t3tIdentifier);
+
+    public void clearT3tIdentifiersCache();
+
+    public int getLfT3tMax();
 
     void commitRouting();
 
@@ -416,5 +425,9 @@ public interface DeviceHost {
     public void disableDtaMode();
 
     public byte[] getAdditionalConfigOptions();
+
+    public int doselectUicc(int uiccSlot);
+
+    public int doGetSelectedUicc();
 
 }

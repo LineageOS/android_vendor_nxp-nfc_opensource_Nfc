@@ -40,6 +40,7 @@ extern "C"{
 extern INT32 gSeDiscoverycount;
 extern SyncEvent gNfceeDiscCbEvent;
 extern INT32 gActualSeCount;
+static void LmrtRspTimerCb(union sigval);
 
 int gUICCVirtualWiredProtectMask = 0;
 int gEseVirtualWiredProtectMask = 0;
@@ -57,8 +58,11 @@ const JNINativeMethod RoutingManager::sMethods [] =
 
 static UINT16 rdr_req_handling_timeout = 50;
 
+#if((NXP_EXTNS == TRUE) && (NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE))
+static int mSetDefaulRouteParams;
+#endif
+#if(NFC_NXP_ESE == TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
 Rdr_req_ntf_info_t swp_rdr_req_ntf_info;
-#if(NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE == PN548C2)
 static IntervalTimer swp_rd_req_timer;
 #endif
 static const int MAX_NUM_EE = 5;
@@ -70,6 +74,7 @@ namespace android
     extern  void  checkforTranscation(UINT8 connEvent, void* eventData );
 #if (NXP_EXTNS == TRUE)
     extern UINT16 sRoutingBuffLen;
+    extern bool  rfActivation;
     extern bool isNfcInitializationDone();
     extern void startRfDiscovery (bool isStart);
     extern bool isDiscoveryStarted();
@@ -85,7 +90,7 @@ namespace android
 RoutingManager::RoutingManager ()
 : mNativeData(NULL),
   mDefaultEe (NFA_HANDLE_INVALID),
-  mHostListnEnable (true),
+  mHostListnTechMask (0),
   mFwdFuntnEnable (true),
   mAddAid(1)
 {
@@ -98,12 +103,25 @@ RoutingManager::RoutingManager ()
     else
         mActiveSe = 0x00;
 
+    // Get the active SE for Nfc-F
+    if (GetNumValue("ACTIVE_SE_NFCF", &num, sizeof(num)))
+        mActiveSeNfcF = num;
+    else
+        mActiveSeNfcF = 0x00;
+
     // Get the "default" route
     if (GetNumValue("DEFAULT_ISODEP_ROUTE", &num, sizeof(num)))
         mDefaultEe = num;
     else
         mDefaultEe = 0x00;
     ALOGD("%s: default route is 0x%02X", fn, mDefaultEe);
+
+    // Get the "default" route for Nfc-F
+    if (GetNumValue("DEFAULT_NFCF_ROUTE", &num, sizeof(num)))
+      mDefaultEeNfcF = num;
+    else
+      mDefaultEeNfcF = 0x00;
+
     // Get the default "off-host" route.  This is hard-coded at the Java layer
     // but we can override it here to avoid forcing Java changes.
     if (GetNumValue("DEFAULT_OFFHOST_ROUTE", &num, sizeof(num)))
@@ -121,6 +139,7 @@ RoutingManager::RoutingManager ()
         mAidMatchingPlatform = AID_MATCHING_L;
     ALOGD("%s: mOffHostEe=0x%02X mAidMatchingMode=0x%2X", fn, mOffHostEe, mAidMatchingMode);
     mSeTechMask = 0x00;
+    mNfcFOnDhHandle = NFA_HANDLE_INVALID;
 }
 
 
@@ -133,7 +152,7 @@ int RoutingManager::mChipId = 0;
 bool recovery;
 #endif
 
-#if(NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE == PN548C2)
+#if(NFC_NXP_ESE == TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
 void reader_req_event_ntf (union sigval);
 #endif
 RoutingManager::~RoutingManager ()
@@ -150,10 +169,10 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
     tNFA_EE_INFO mEeInfo [mActualNumEe];
 
 #if (NXP_EXTNS == TRUE)
-    if ((GetNumValue(NAME_HOST_LISTEN_ENABLE, &tech, sizeof(tech))))
+    if ((GetNumValue(NAME_HOST_LISTEN_TECH_MASK, &tech, sizeof(tech))))
     {
-        mHostListnEnable = tech;
-        ALOGE ("%s:HOST_LISTEN_ENABLE=%d;", __FUNCTION__, mHostListnEnable);
+        mHostListnTechMask = tech;
+        ALOGD ("%s:HOST_LISTEN_TECH_MASK = 0x%X;", __FUNCTION__, mHostListnTechMask);
     }
 
     if ((GetNumValue(NAME_NXP_FWD_FUNCTIONALITY_ENABLE, &tech, sizeof(tech))))
@@ -172,16 +191,16 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
         ALOGD ("%lu: mAddAid", num);
         mAddAid = num;
     }
-#if (NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE == PN548C2)
+#if (NFC_NXP_ESE == TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
     if (GetNxpNumValue (NAME_NXP_ESE_WIRED_PRT_MASK, (void*)&num, sizeof(num)))
     {
         ALOGD (" NAME_NXP_ESE_WIRED_PRT_MASK :%lu", num);
-        gUICCVirtualWiredProtectMask = num;
+        gEseVirtualWiredProtectMask = num;
     }
     if (GetNxpNumValue (NAME_NXP_UICC_WIRED_PRT_MASK, (void*)&num, sizeof(num)))
     {
-        ALOGD ("%lu: NAME_NXP_UICC_WIRED_PRT_MASK", num);
-        gEseVirtualWiredProtectMask = num;
+        ALOGD ("%d: NAME_NXP_UICC_WIRED_PRT_MASK", num);
+        gUICCVirtualWiredProtectMask = num;
     }
     if (GetNxpNumValue (NAME_NXP_WIRED_MODE_RF_FIELD_ENABLE, (void*)&num, sizeof(num)))
     {
@@ -210,14 +229,14 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
     }
 
 #if(NXP_EXTNS == TRUE)
-    if(mHostListnEnable)
+    if (mHostListnTechMask)
     {
         // Tell the host-routing to only listen on Nfc-A/Nfc-B
         nfaStat = NFA_CeRegisterAidOnDH (NULL, 0, stackCallback);
         if (nfaStat != NFA_STATUS_OK)
             ALOGE ("Failed to register wildcard AID for DH");
         // Tell the host-routing to only listen on Nfc-A/Nfc-B
-        nfaStat = NFA_CeSetIsoDepListenTech(NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B);
+        nfaStat = NFA_CeSetIsoDepListenTech(mHostListnTechMask);
         if (nfaStat != NFA_STATUS_OK)
             ALOGE ("Failed to configure CE IsoDep technologies");
         //setRouting(true);
@@ -253,7 +272,7 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
     }
 
     ALOGD("gSeDiscoverycount = %ld", gSeDiscoverycount);
-#if(NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE == PN548C2)
+#if (NFC_NXP_ESE ==  TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
     swp_rdr_req_ntf_info.mMutex.lock();
     memset(&(swp_rdr_req_ntf_info.swp_rd_req_info),0x00,sizeof(rd_swp_req_t));
     memset(&(swp_rdr_req_ntf_info.swp_rd_req_current_info),0x00,sizeof(rd_swp_req_t));
@@ -555,6 +574,16 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
     tNFA_HANDLE ActDevHandle = NFA_HANDLE_INVALID;
     tNFA_HANDLE preferred_defaultHandle = 0x402;
     UINT8 isDefaultProtoSeIDPresent = 0;
+
+    ALOGD ("%s: enter", fn);
+
+#if((NXP_EXTNS == TRUE) && (NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE))
+    if(mSetDefaulRouteParams == 0)
+    {
+        mSetDefaulRouteParams = ((defaultRoute<<16)|(protoRoute<<8)|(techRoute));
+    }
+#endif
+
     SyncEventGuard guard (mRoutingEvent);
     if (mDefaultEe == SecureElement::ESE_ID) //eSE
     {
@@ -564,31 +593,31 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
     {
         preferred_defaultHandle = 0x402;
     }
-    // Host
+
        uiccListenTech = NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B;
 
-       ALOGD ("%s: enter, defaultRoute:%x protoRoute:0x%x TechRoute:0x%x ", fn, defaultRoute, protoRoute, techRoute);
+       ALOGD ("%s: enter, defaultRoute:%x protoRoute:0x%x TechRoute:0x%x HostListenMask:0x%x", fn, defaultRoute, protoRoute, techRoute, mHostListnTechMask);
+
        defaultSeID = (((defaultRoute & 0x60) >> 5) == 0x00)  ? 0x400 :  ((((defaultRoute & 0x60)>>5 )== 0x01 ) ? 0x4C0 : 0x402);
        defaultPowerstate=defaultRoute & 0x1F;
-
        ALOGD ("%s: enter, defaultSeID:%x defaultPowerstate:0x%x", fn, defaultSeID,defaultPowerstate);
+
        defaultProtoSeID = (((protoRoute & 0x60) >> 5) == 0x00)  ? 0x400 :  ((((protoRoute & 0x60)>>5 )== 0x01 ) ? 0x4C0 : 0x402);
        defaultProtoPowerstate = protoRoute & 0x1F;
-
        ALOGD ("%s: enter, defaultProtoSeID:%x defaultProtoPowerstate:0x%x", fn, defaultProtoSeID,defaultProtoPowerstate);
 
        defaultTechSeID = (((techRoute & 0x60) >> 5) == 0x00)  ? 0x400 :  ((((techRoute & 0x60)>>5 )== 0x01 ) ? 0x4C0 : 0x402);
        defaultTechAPowerstate = techRoute & 0x1F;
        DefaultTechType = (techRoute & 0x80) >> 7;
-
        ALOGD ("%s: enter, defaultTechSeID:%x defaultTechAPowerstate:0x%x,defaultTechType:0x%x", fn, defaultTechSeID,defaultTechAPowerstate,DefaultTechType);
 
        cleanRouting();
-       if(mHostListnEnable)
+
+       if (mHostListnTechMask)
        {
            nfaStat = NFA_CeRegisterAidOnDH (NULL, 0, stackCallback);
            if (nfaStat != NFA_STATUS_OK)
-               ALOGE("Failed to register wildcard AID for DH");
+               ALOGE ("Failed to register wildcard AID for DH");
        }
 
        if (GetNxpNumValue(NAME_CHECK_DEFAULT_PROTO_SE_ID, &check_default_proto_se_id_req, sizeof(check_default_proto_se_id_req)))
@@ -629,13 +658,12 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
                }
            }
 
-
+           ALOGD ("%s: enter, isDefaultProtoSeIDPresent:%x", fn, isDefaultProtoSeIDPresent);
            if(!isDefaultProtoSeIDPresent)
            {
                defaultProtoSeID = 0x400;
                defaultProtoPowerstate = 0x01;
            }
-           ALOGD ("%s: enter, isDefaultProtoSeIDPresent:%x", fn, isDefaultProtoSeIDPresent);
        }
 
        if( defaultProtoSeID == defaultSeID)
@@ -652,7 +680,7 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
                        default_proto_power_mask[pCount] |= NFA_PROTOCOL_MASK_ISO_DEP;
                   }
              }
-             if(defaultProtoSeID == 0x400 && mHostListnEnable == FALSE)
+             if(defaultProtoSeID == 0x400 && mHostListnTechMask == 0x00)
              {
                  ALOGE("%s, HOST is disabled hence skipping configure proto route to host", fn);
              }
@@ -661,7 +689,7 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
                  if(mCeRouteStrictDisable == 0x01)
                  {
 
-#if(NFC_NXP_CHIP_TYPE != PN547C2)
+#if(NFC_NXP_CHIP_TYPE != PN547C2 && NXP_EXTNS == TRUE && NXP_NFCC_HCE_F == TRUE)
                      if(defaultProtoSeID == 0x400)
                      {
                          default_proto_power_mask[0] |= NFA_PROTOCOL_MASK_T3T;
@@ -694,7 +722,7 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
        {
               int t3t_protocol_mask = 0;
               ALOGD ("%s: enter, defaultPowerstate:%x", fn, defaultPowerstate);
-              if(mHostListnEnable == FALSE && defaultSeID == 0x400)
+              if(mHostListnTechMask == 0x00 && defaultSeID == 0x400)
               {
                   ALOGE("%s, HOST is disabled hence skipping configure 7816 route to host", fn);
               }
@@ -729,10 +757,9 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
                        ALOGE ("Fail to set  iso7816 routing");
                   }
 
-
                   t3t_protocol_mask =0;
               }
-              if(mHostListnEnable == FALSE && defaultProtoSeID == 0x400)
+              if(mHostListnTechMask == 0x00 && defaultProtoSeID == 0x400)
               {
                   ALOGE("%s, HOST is disabled hence skipping configure ISO-DEP route to host", fn);
               }
@@ -740,19 +767,29 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
               {
                   if(mCeRouteStrictDisable == 0x01)
                   {
-#if(NFC_NXP_CHIP_TYPE != PN547C2)
+#if(NFC_NXP_CHIP_TYPE != PN547C2 && NXP_EXTNS == TRUE && NXP_NFCC_HCE_F == TRUE)
+                     //Felicafrom host
+                     int t3t_protocol_mask =0;
                       if(defaultProtoSeID == 0x400)
                       {
                           t3t_protocol_mask = NFA_PROTOCOL_MASK_T3T;
                       }
 #endif
-
+#if(NXP_EXTNS == TRUE && NXP_NFCC_HCE_F == TRUE)
+                     nfaStat = NFA_EeSetDefaultProtoRouting(defaultProtoSeID,
+                                                           (defaultProtoPowerstate& 01) ? (NFA_PROTOCOL_MASK_ISO_DEP | t3t_protocol_mask): 0,
+                                                           (defaultProtoPowerstate & 02) ? (NFA_PROTOCOL_MASK_ISO_DEP) :0,
+                                                           (defaultProtoPowerstate & 04) ? (NFA_PROTOCOL_MASK_ISO_DEP) :0,
+                                                           (defaultProtoPowerstate & 0x08) ? NFA_PROTOCOL_MASK_ISO_DEP :0,
+                                                           (defaultProtoPowerstate & 0x10) ? NFA_PROTOCOL_MASK_ISO_DEP :0 );
+#else
                       nfaStat = NFA_EeSetDefaultProtoRouting(defaultProtoSeID,
-                                                            (defaultProtoPowerstate& 01) ? (NFA_PROTOCOL_MASK_ISO_DEP | t3t_protocol_mask): 0,
-                                                            (defaultProtoPowerstate & 02) ? (NFA_PROTOCOL_MASK_ISO_DEP) :0,
-                                                            (defaultProtoPowerstate & 04) ? (NFA_PROTOCOL_MASK_ISO_DEP) :0,
+                                                            (defaultProtoPowerstate& 01) ? NFA_PROTOCOL_MASK_ISO_DEP: 0,
+                                                            (defaultProtoPowerstate & 02) ? NFA_PROTOCOL_MASK_ISO_DEP :0,
+                                                            (defaultProtoPowerstate & 04) ? NFA_PROTOCOL_MASK_ISO_DEP :0,
                                                             (defaultProtoPowerstate & 0x08) ? NFA_PROTOCOL_MASK_ISO_DEP :0,
                                                             (defaultProtoPowerstate & 0x10) ? NFA_PROTOCOL_MASK_ISO_DEP :0);
+#endif
                   }else{
                       nfaStat = NFA_EeSetDefaultProtoRouting(defaultProtoSeID,
                                                              (defaultProtoPowerstate& 01) ? NFA_PROTOCOL_MASK_ISO_DEP: 0,
@@ -764,14 +801,14 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
                        mRoutingEvent.wait ();
                   else
                   {
-                       ALOGE ("Fail to set  iso7816 routing");
+                       ALOGE ("Fail to set ISO-7816 routing");
                   }
                   t3t_protocol_mask =0;
               }
        }
 
-#if(NFC_NXP_CHIP_TYPE != PN547C2)
-       if(0x400 != defaultProtoSeID  && 0x400 != defaultSeID && mHostListnEnable == TRUE)
+#if(NFC_NXP_CHIP_TYPE != PN547C2 && NXP_EXTNS == TRUE && NXP_NFCC_HCE_F == TRUE)
+       if(0x400 != defaultProtoSeID  && 0x400 != defaultSeID && mHostListnTechMask)
        {
 
            if(mCeRouteStrictDisable == 0x01)
@@ -800,18 +837,19 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
        }
 #endif
 //ee_handle = SecureElement::getInstance().getEseHandleFromGenericId(switch_on);
-    ALOGD ("%s: enter, defaultHandle:%x", fn, defaultHandle);
-    ALOGD ("%s: enter, preferred_defaultHandle:%x", fn, preferred_defaultHandle);
-
+    ALOGD ("%s:defaultHandle:%x", fn, defaultHandle);
+    ALOGD ("%s:preferred_defaultHandle:%x", fn, preferred_defaultHandle);
 
     {
-        unsigned long max_tech_mask = 0x03;
-        max_tech_mask = SecureElement::getInstance().getSETechnology(defaultTechSeID);
-        ALOGD ("%s: enter,max_tech_mask :%lx", fn, max_tech_mask);
-        unsigned int default_tech_power_mask[5]={0,};
-        unsigned int defaultTechFPowerstate=0x1F;
+        unsigned long max_tech_mask             = 0x03;
+        unsigned int default_tech_power_mask[5] = {0,};
+        unsigned int defaultTechFPowerstate     = 0x1F;
 
-        ALOGD ("%s: enter, defaultTechSeID:%x", fn, defaultTechSeID);
+        max_tech_mask = SecureElement::getInstance().getSETechnology(defaultTechSeID);
+
+        ALOGD ("%s:defaultTechSeID:%x", fn, defaultTechSeID);
+        ALOGD ("%s:Technologies supported by defaultTechSeID :%x", fn, max_tech_mask);
+
         if(defaultTechSeID == 0x402)
         {
                for(int pCount=0 ; pCount< 5 ;pCount++)
@@ -826,55 +864,6 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
                     }
                }
 
-               if(mHostListnEnable == TRUE && mFwdFuntnEnable == TRUE)
-               {
-                   if(!(max_tech_mask & NFA_TECHNOLOGY_MASK_A)
-                       && ( max_tech_mask & NFA_TECHNOLOGY_MASK_B))
-                   {
-                       if(mCeRouteStrictDisable == 0x01)
-                       {
-                           nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
-                                                                   NFA_TECHNOLOGY_MASK_A,
-                                                                   0,
-                                                                   0,
-                                                                   NFA_TECHNOLOGY_MASK_A,
-                                                                   0 );
-                       }else{
-                           nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
-                                                                   NFA_TECHNOLOGY_MASK_A,
-                                                                   0, 0, 0, 0 );
-                       }
-                       if (nfaStat == NFA_STATUS_OK)
-                          mRoutingEvent.wait ();
-                       else
-                       {
-                           ALOGE ("Fail to set tech routing");
-                       }
-                   }
-                   else if(!(max_tech_mask & NFA_TECHNOLOGY_MASK_B)
-                            && (max_tech_mask & NFA_TECHNOLOGY_MASK_A))
-                   {
-                       if(mCeRouteStrictDisable == 0x01)
-                       {
-                           nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
-                                                                  NFA_TECHNOLOGY_MASK_B,
-                                                                  0,
-                                                                  0,
-                                                                  NFA_TECHNOLOGY_MASK_B,
-                                                                  0 );
-                       }else{
-                           nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
-                                                                  NFA_TECHNOLOGY_MASK_B,
-                                                                  0, 0, 0, 0 );
-                       }
-                       if (nfaStat == NFA_STATUS_OK)
-                          mRoutingEvent.wait ();
-                       else
-                       {
-                           ALOGE ("Fail to set tech routing");
-                       }
-                   }
-               }
                if(mCeRouteStrictDisable == 0x01)
                {
                    nfaStat =  NFA_EeSetDefaultTechRouting (defaultTechSeID,
@@ -897,11 +886,239 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
                {
                      ALOGE ("Fail to set tech routing");
                }
+
+            if(mHostListnTechMask > 0 && mFwdFuntnEnable == TRUE)
+            {
+                if(!(max_tech_mask & NFA_TECHNOLOGY_MASK_A) && (max_tech_mask & NFA_TECHNOLOGY_MASK_B))
+                {
+                   if(mCeRouteStrictDisable == 0x01)
+                   {
+                       switch(mHostListnTechMask)
+                       {
+                           case 0x01:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0,
+                                                                    0,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0 );
+                           break;
+                           case 0x02:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0 );
+                           break;
+                           case 0x03:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                NFA_TECHNOLOGY_MASK_A,
+                                                                   0,
+                                                                   0,
+                                                                   NFA_TECHNOLOGY_MASK_A,
+                                                                   0 );
+                           break;
+                       }
+                   }
+                   else
+                   {
+                       switch(mHostListnTechMask)
+                       {
+                           case 0x01:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                   NFA_TECHNOLOGY_MASK_A,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0 );
+                           break;
+                           case 0x02:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0 );
+                           break;
+                           case 0x03:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                   NFA_TECHNOLOGY_MASK_A,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0 );
+                           break;
+                        }
+                   }
+                   if(nfaStat == NFA_STATUS_OK)
+                   {
+                      mRoutingEvent.wait ();
+                   }
+                   else
+                   {
+                       ALOGE ("Fail to set Tech A routing to DH");
+                   }
+                }
+                else if(!(max_tech_mask & NFA_TECHNOLOGY_MASK_B) && (max_tech_mask & NFA_TECHNOLOGY_MASK_A))
+                {
+                   if(mCeRouteStrictDisable == 0x01)
+                   {
+                       switch(mHostListnTechMask)
+                       {
+                           case 0x01:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0 );
+                           break;
+                           case 0x02:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                   NFA_TECHNOLOGY_MASK_B,
+                                                                   0,
+                                                                   0,
+                                                                   NFA_TECHNOLOGY_MASK_B,
+                                                                   0 );
+                           break;
+                           case 0x03:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                   NFA_TECHNOLOGY_MASK_B,
+                                                                   0,
+                                                                   0,
+                                                                   NFA_TECHNOLOGY_MASK_B,
+                                                                   0 );
+                           break;
+                       }
+                   }
+                   else
+                   {
+                       switch(mHostListnTechMask)
+                       {
+                           case 0x01:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0 );
+                           break;
+                           case 0x02:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                   NFA_TECHNOLOGY_MASK_B,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0 );
+                           break;
+                           case 0x03:
+                                  nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                   NFA_TECHNOLOGY_MASK_B,
+                                                                   0,
+                                                                   0,
+                                                                   0,
+                                                                   0 );
+                           break;
+                       }
+                   }
+                   if(nfaStat == NFA_STATUS_OK)
+                   {
+                       mRoutingEvent.wait ();
+                   }
+                   else
+                   {
+                       ALOGE ("Fail to set Tech B routing to DH");
+                   }
+                }
+                else if((max_tech_mask == (NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B)) ||
+                       (max_tech_mask == (NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B | NFA_TECHNOLOGY_MASK_F)))// When there is NO UICC or Type AB/ABF UICC detected
+                {
+                    ALOGD ("TypeAB or Type ABF UICC detected, not setting any tech route to DH");
+                }
+                else if(max_tech_mask == 0x00) //When NO UICC
+                {
+                    ALOGD ("No UICC connected");
+                    if(mCeRouteStrictDisable == 0x01)
+                    {
+                        switch(mHostListnTechMask)
+                        {
+                            case 0x01:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0,
+                                                                    0,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0 );
+                            break;
+                            case 0x02:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0,
+                                                                    0,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0 );
+                            break;
+                            case 0x03:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    0,
+                                                                    0,
+                                                                   0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        switch(mHostListnTechMask)
+                        {
+                            case 0x01:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                           break;
+                            case 0x02:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                            case 0x03:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                        }
+                    }
+                    if(nfaStat == NFA_STATUS_OK)
+                    {
+                       mRoutingEvent.wait ();
+                    }
+                    else
+                    {
+                        ALOGE ("Fail to set Tech A or B routing to DH");
+                    }
+                }
+            }
+            else
+            {
+                ALOGD ("Host Listen is disabled, Not setting any tech route to DH");
+            }
         }
         else
         {
               DefaultTechType &= ~NFA_TECHNOLOGY_MASK_F;
               DefaultTechType |= (NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B);
+
               if(mCeRouteStrictDisable == 0x01)
               {
                   nfaStat =  NFA_EeSetDefaultTechRouting (defaultTechSeID,
@@ -921,9 +1138,11 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
                   mRoutingEvent.wait ();
               else
               {
-                  ALOGE ("Fail to set  tech routing");
+                  ALOGE ("Fail to set Tech A/B/AB routing to ESE/DH");
               }
+
               max_tech_mask = SecureElement::getInstance().getSETechnology(0x402);
+
               if(mCeRouteStrictDisable == 0x01)
               {
                   nfaStat =  NFA_EeSetDefaultTechRouting (0x402,
@@ -943,59 +1162,232 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
                      mRoutingEvent.wait ();
               else
               {
-                     ALOGE ("Fail to set  tech routing");
+                  ALOGE ("Fail to set Tech F routing to UICC");
               }
 
-              if(mHostListnEnable == TRUE && mFwdFuntnEnable == TRUE)
-              {
-                  if(!(max_tech_mask & NFA_TECHNOLOGY_MASK_A)
-                      && ( max_tech_mask & NFA_TECHNOLOGY_MASK_B))
-                  {
-                      if(mCeRouteStrictDisable == 0x01)
-                      {
-                      nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
-                                                              NFA_TECHNOLOGY_MASK_A,
-                                                              0,
-                                                              0,
-                                                              NFA_TECHNOLOGY_MASK_A ,
-                                                              0 );
-                      }else
-                      {
-                          nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
-                                                                  NFA_TECHNOLOGY_MASK_A,
-                                                                  0, 0, 0, 0 );
-                      }
-                      if (nfaStat == NFA_STATUS_OK)
-                          mRoutingEvent.wait ();
-                      else
-                      {
-                          ALOGE ("Fail to set  tech routing");
-                      }
-                  }
-                  else if(!(max_tech_mask & NFA_TECHNOLOGY_MASK_B)
-                          && (max_tech_mask & NFA_TECHNOLOGY_MASK_A))
-                  {
-                      if(mCeRouteStrictDisable == 0x01)
-                      {
-                      nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
-                                                              NFA_TECHNOLOGY_MASK_B,
-                                                              0,
-                                                              0,
-                                                              NFA_TECHNOLOGY_MASK_B,
-                                                              0 );
-                      }else{
-                          nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
-                                                                  NFA_TECHNOLOGY_MASK_B,
-                                                                  0, 0, 0, 0 );
-                      }
-                      if (nfaStat == NFA_STATUS_OK)
-                          mRoutingEvent.wait ();
-                      else
-                      {
-                          ALOGE ("Fail to set  tech routing");
-                      }
-                  }
-              }
+            if(mHostListnTechMask > 0 && mFwdFuntnEnable == TRUE)
+            {
+                if(!(max_tech_mask & NFA_TECHNOLOGY_MASK_A) && ( max_tech_mask & NFA_TECHNOLOGY_MASK_B))
+                {
+                    if(mCeRouteStrictDisable == 0x01)
+                    {
+                        switch(mHostListnTechMask)
+                        {
+                            case 0x01:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0,
+                                                                    0,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0 );
+                            break;
+                            case 0x02:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                            case 0x03:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0,
+                                                                    0,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0 );
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        switch(mHostListnTechMask)
+                        {
+                            case 0x01:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                            case 0x02:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                   0,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                            case 0x03:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                        }
+                    }
+                    if(nfaStat == NFA_STATUS_OK)
+                    {
+                        mRoutingEvent.wait ();
+                    }
+                    else
+                    {
+                        ALOGE ("Fail to set Tech A routing to DH");
+                    }
+                }
+                else if(!(max_tech_mask & NFA_TECHNOLOGY_MASK_B) && (max_tech_mask & NFA_TECHNOLOGY_MASK_A))
+                {
+                    if(mCeRouteStrictDisable == 0x01)
+                    {
+                        switch(mHostListnTechMask)
+                        {
+                            case 0x01:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                            case 0x02:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0,
+                                                                    0,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0 );
+                            break;
+                            case 0x03:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0,
+                                                                    0,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0 );
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        switch(mHostListnTechMask)
+                        {
+                            case 0x01:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                            case 0x02:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                            case 0x03:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                        }
+                    }
+                    if(nfaStat == NFA_STATUS_OK)
+                    {
+                        mRoutingEvent.wait ();
+                    }
+                    else
+                    {
+                        ALOGE ("Fail to set Tech B routing to DH");
+                    }
+                }
+                else if((max_tech_mask == (NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B)) ||
+                       (max_tech_mask == (NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B | NFA_TECHNOLOGY_MASK_F)))// When there is NO UICC or Type AB/ABF UICC detected
+                {
+                    ALOGD ("TypeAB or Type ABF UICC detected, not setting any tech route to DH");
+                }
+                else if(max_tech_mask == 0x00) //When NO UICC
+                {
+                    ALOGD ("No UICC connected");
+                    if(mCeRouteStrictDisable == 0x01)
+                    {
+                        switch(mHostListnTechMask)
+                        {
+                            case 0x01:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0,
+                                                                    0,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0 );
+                            break;
+                            case 0x02:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0,
+                                                                    0,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0 );
+                            break;
+                            case 0x03:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        switch(mHostListnTechMask)
+                        {
+                            case 0x01:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_A,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                            case 0x02:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    NFA_TECHNOLOGY_MASK_B,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                            case 0x03:
+                                   nfaStat =  NFA_EeSetDefaultTechRouting (0x400,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0,
+                                                                    0 );
+                            break;
+                        }
+                    }
+
+                    if(nfaStat == NFA_STATUS_OK)
+                    {
+                       mRoutingEvent.wait ();
+                    }
+                    else
+                    {
+                        ALOGE ("Fail to set Tech A or B routing to DH");
+                    }
+                }
+            }
         }
     }
 
@@ -1033,19 +1425,22 @@ void RoutingManager::setCeRouteStrictDisable(UINT32 state)
     ALOGD ("%s: mCeRouteScreenLock = 0x%lX", __FUNCTION__, state);
     mCeRouteStrictDisable = state;
 }
-
 #endif
 
 void RoutingManager::enableRoutingToHost()
 {
     tNFA_STATUS nfaStat;
-
+    tNFA_TECHNOLOGY_MASK techMask;
+    tNFA_PROTOCOL_MASK protoMask;
+    SyncEventGuard guard (mRoutingEvent);
+    ALOGE ("%s entry ", __FUNCTION__);
+    // Set default routing at one time when the NFCEE IDs for Nfc-A and Nfc-F are same
+    if (mDefaultEe == mDefaultEeNfcF)
     {
-        SyncEventGuard guard (mRoutingEvent);
-
-        // Route Nfc-A to host if we don't have a SE
-        if (mSeTechMask == 0)
-        {
+        // Route Nfc-A/Nfc-F to host if we don't have a SE
+        techMask = (mSeTechMask ^ (NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_F));
+    if (techMask != 0)
+    {
 #if(NXP_EXTNS == TRUE)
             if(mCeRouteStrictDisable == 0x01)
             {
@@ -1054,15 +1449,15 @@ void RoutingManager::enableRoutingToHost()
                 nfaStat = NFA_EeSetDefaultTechRouting (mDefaultEe, NFA_TECHNOLOGY_MASK_A, 0, 0, 0, 0);
             }
 #else
-            nfaStat = NFA_EeSetDefaultTechRouting (mDefaultEe, NFA_TECHNOLOGY_MASK_A, 0, 0);
+            nfaStat = NFA_EeSetDefaultTechRouting (mDefaultEe, techMask, 0, 0);
 #endif
             if (nfaStat == NFA_STATUS_OK)
                 mRoutingEvent.wait ();
             else
-                ALOGE ("Fail to set default tech routing");
+                ALOGE ("Fail to set default tech routing for Nfc-A/Nfc-F");
         }
 
-        // Default routing for IsoDep protocol
+        // Default routing for IsoDep and T3T protocol
 #if(NXP_EXTNS == TRUE)
         if(mCeRouteStrictDisable == 0x01)
         {
@@ -1081,27 +1476,69 @@ void RoutingManager::enableRoutingToHost()
                                                    0);
         }
 #else
-        nfaStat = NFA_EeSetDefaultProtoRouting(mDefaultEe,
-                                               NFA_PROTOCOL_MASK_ISO_DEP,
-                                               0,
-                                               0);
+        protoMask = (NFA_PROTOCOL_MASK_ISO_DEP | NFA_PROTOCOL_MASK_T3T);
+        nfaStat = NFA_EeSetDefaultProtoRouting(mDefaultEe, protoMask, 0, 0);
 #endif
         if (nfaStat == NFA_STATUS_OK)
             mRoutingEvent.wait ();
         else
-            ALOGE ("Fail to set default proto routing");
+            ALOGE ("Fail to set default proto routing for IsoDep and T3T");
     }
+    else
+    {
+        // Route Nfc-A to host if we don't have a SE
+        techMask = NFA_TECHNOLOGY_MASK_A;
+        if ((mSeTechMask & NFA_TECHNOLOGY_MASK_A) == 0)
+        {
+            nfaStat = NFA_EeSetDefaultTechRouting (mDefaultEe, techMask, 0, 0,0,0);
+            if (nfaStat == NFA_STATUS_OK)
+                mRoutingEvent.wait ();
+            else
+                ALOGE ("Fail to set default tech routing for Nfc-A");
+        }
+        // Default routing for IsoDep protocol
+        protoMask = NFA_PROTOCOL_MASK_ISO_DEP;
+        nfaStat = NFA_EeSetDefaultProtoRouting(mDefaultEe, protoMask, 0, 0,0,0);
+        if (nfaStat == NFA_STATUS_OK)
+            mRoutingEvent.wait ();
+        else
+            ALOGE ("Fail to set default proto routing for IsoDep");
+
+        // Route Nfc-F to host if we don't have a SE
+        techMask = NFA_TECHNOLOGY_MASK_F;
+        if ((mSeTechMask & NFA_TECHNOLOGY_MASK_F) == 0)
+        {
+            nfaStat = NFA_EeSetDefaultTechRouting (mDefaultEeNfcF, techMask, 0, 0,0,0);
+            if (nfaStat == NFA_STATUS_OK)
+                mRoutingEvent.wait ();
+            else
+                ALOGE ("Fail to set default tech routing for Nfc-F");
+        }
+        // Default routing for T3T protocol
+        protoMask = NFA_PROTOCOL_MASK_T3T;
+        nfaStat = NFA_EeSetDefaultProtoRouting(mDefaultEeNfcF, protoMask, 0, 0,0,0);
+        if (nfaStat == NFA_STATUS_OK)
+            mRoutingEvent.wait ();
+        else
+            ALOGE ("Fail to set default proto routing for T3T");
+    }
+     ALOGD (" %s exit ", __FUNCTION__);
 }
 
 //TODO:
 void RoutingManager::disableRoutingToHost()
 {
     tNFA_STATUS nfaStat;
+    tNFA_TECHNOLOGY_MASK techMask;
+    ALOGD ("%s entry ", __FUNCTION__);
+    SyncEventGuard guard (mRoutingEvent);
 
+    // Set default routing at one time when the NFCEE IDs for Nfc-A and Nfc-F are same
+    if (mDefaultEe == mDefaultEeNfcF)
     {
-        SyncEventGuard guard (mRoutingEvent);
-        // Default routing for NFC-A technology if we don't have a SE
-        if (mSeTechMask == 0)
+        // Default routing for Nfc-A/Nfc-F technology if we don't have a SE
+        techMask = (mSeTechMask ^ (NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_F));
+        if (techMask != 0)
         {
 #if(NXP_EXTNS == TRUE)
             nfaStat = NFA_EeSetDefaultTechRouting (mDefaultEe, 0, 0, 0, 0, 0);
@@ -1111,7 +1548,25 @@ void RoutingManager::disableRoutingToHost()
             if (nfaStat == NFA_STATUS_OK)
                 mRoutingEvent.wait ();
             else
-                ALOGE ("Fail to set default tech routing");
+                ALOGE ("Fail to set default tech routing for Nfc-A/Nfc-F");
+        }
+        // Default routing for IsoDep and T3T protocol
+        nfaStat = NFA_EeSetDefaultProtoRouting(mDefaultEe, 0, 0, 0,0,0);
+        if (nfaStat == NFA_STATUS_OK)
+            mRoutingEvent.wait ();
+        else
+            ALOGE ("Fail to set default proto routing for IsoDep and T3T");
+    }
+    else
+    {
+        // Default routing for Nfc-A technology if we don't have a SE
+        if ((mSeTechMask & NFA_TECHNOLOGY_MASK_A) == 0)
+        {
+            nfaStat = NFA_EeSetDefaultTechRouting (mDefaultEe, 0, 0, 0,0,0);
+            if (nfaStat == NFA_STATUS_OK)
+                mRoutingEvent.wait ();
+            else
+                ALOGE ("Fail to set default tech routing for Nfc-A");
         }
 
         // Default routing for IsoDep protocol
@@ -1123,8 +1578,25 @@ void RoutingManager::disableRoutingToHost()
         if (nfaStat == NFA_STATUS_OK)
             mRoutingEvent.wait ();
         else
-            ALOGE ("Fail to set default proto routing");
+            ALOGE ("Fail to set default proto routing for IsoDep");
+
+        // Default routing for Nfc-F technology if we don't have a SE
+        if ((mSeTechMask & NFA_TECHNOLOGY_MASK_F) == 0)
+        {
+            nfaStat = NFA_EeSetDefaultTechRouting (mDefaultEeNfcF, 0, 0, 0,0,0);
+            if (nfaStat == NFA_STATUS_OK)
+                mRoutingEvent.wait ();
+            else
+                ALOGE ("Fail to set default tech routing for Nfc-F");
+        }
+        // Default routing for T3T protocol
+        nfaStat = NFA_EeSetDefaultProtoRouting(mDefaultEeNfcF, 0, 0, 0,0,0);
+        if (nfaStat == NFA_STATUS_OK)
+            mRoutingEvent.wait ();
+        else
+            ALOGE ("Fail to set default proto routing for T3T");
     }
+    ALOGD ("%s exit ", __FUNCTION__);
 }
 #if(NXP_EXTNS == TRUE)
 bool RoutingManager::setRoutingEntry(int type, int value, int route, int power)
@@ -1190,7 +1662,7 @@ bool RoutingManager::setRoutingEntry(int type, int value, int route, int power)
         screen_lock_mask  = (power & 0x10) ? value : 0;
 
 
-        if(mHostListnEnable == 0x01 && mFwdFuntnEnable == TRUE)
+        if(mHostListnTechMask > 0 && mFwdFuntnEnable == TRUE)
         {
             if((max_tech_mask != 0x01) && (max_tech_mask == 0x02))
             {
@@ -1884,6 +2356,7 @@ bool RoutingManager::commitRouting()
     tNFA_STATUS nfaStat = 0;
     ALOGD ("%s", fn);
     {
+        RoutingManager::getInstance().LmrtRspTimer.set(1000, LmrtRspTimerCb);
         SyncEventGuard guard (mEeUpdateEvent);
         nfaStat = NFA_EeUpdateNow();
         if (nfaStat == NFA_STATUS_OK)
@@ -1918,7 +2391,9 @@ void RoutingManager::onNfccShutdown ()
                 && (eeInfo[xx].ee_status == NFA_EE_STATUS_ACTIVE))
             {
                 ALOGD ("%s: Handle: 0x%04x Change Status Active to Inactive", fn, eeInfo[xx].ee_handle);
+#if(NXP_EXTNS == TRUE)
                 if ((nfaStat = SecureElement::getInstance().SecElem_EeModeSet (eeInfo[xx].ee_handle, NFA_EE_MD_DEACTIVATE)) != NFA_STATUS_OK)
+#endif
                 {
                     ALOGE ("Failed to set EE inactive");
                 }
@@ -1931,7 +2406,7 @@ void RoutingManager::onNfccShutdown ()
     }
 }
 
-void RoutingManager::notifyActivated ()
+void RoutingManager::notifyActivated (UINT8 technology)
 {
     JNIEnv* e = NULL;
     ScopedAttach attach(mNativeData->vm, &e);
@@ -1941,7 +2416,7 @@ void RoutingManager::notifyActivated ()
         return;
     }
 
-    e->CallVoidMethod (mNativeData->manager, android::gCachedNfcManagerNotifyHostEmuActivated);
+    e->CallVoidMethod (mNativeData->manager, android::gCachedNfcManagerNotifyHostEmuActivated, (int)technology);
     if (e->ExceptionCheck())
     {
         e->ExceptionClear();
@@ -1949,7 +2424,7 @@ void RoutingManager::notifyActivated ()
     }
 }
 
-void RoutingManager::notifyDeactivated ()
+void RoutingManager::notifyDeactivated (UINT8 technology)
 {
     SecureElement::getInstance().notifyListenModeState (false);
     mRxDataBuffer.clear();
@@ -1961,7 +2436,7 @@ void RoutingManager::notifyDeactivated ()
         return;
     }
 
-    e->CallVoidMethod (mNativeData->manager, android::gCachedNfcManagerNotifyHostEmuDeactivated);
+    e->CallVoidMethod (mNativeData->manager, android::gCachedNfcManagerNotifyHostEmuDeactivated, (int)technology);
     if (e->ExceptionCheck())
     {
         e->ExceptionClear();
@@ -1987,7 +2462,7 @@ void RoutingManager::notifyLmrtFull ()
     }
 }
 
-void RoutingManager::handleData (const UINT8* data, UINT32 dataLen, tNFA_STATUS status)
+void RoutingManager::handleData (UINT8 technology, const UINT8* data, UINT32 dataLen, tNFA_STATUS status)
 {
     if (dataLen <= 0)
     {
@@ -2036,7 +2511,8 @@ void RoutingManager::handleData (const UINT8* data, UINT32 dataLen, tNFA_STATUS 
             goto TheEnd;
         }
 
-        e->CallVoidMethod (mNativeData->manager, android::gCachedNfcManagerNotifyHostEmuData, dataJavaArray.get());
+        e->CallVoidMethod (mNativeData->manager, android::gCachedNfcManagerNotifyHostEmuData,
+             (int)technology, dataJavaArray.get());
         if (e->ExceptionCheck())
         {
             e->ExceptionClear();
@@ -2085,28 +2561,35 @@ void RoutingManager::stackCallback (UINT8 event, tNFA_CONN_EVT_DATA* eventData)
 
     case NFA_CE_ACTIVATED_EVT:
         {
+#if (NXP_EXTNS == TRUE)
+            android::rfActivation = true;
+#endif
             android::checkforTranscation(NFA_CE_ACTIVATED_EVT, (void *)eventData);
-            routingManager.notifyActivated();
+            routingManager.notifyActivated(NFA_TECHNOLOGY_MASK_A);
         }
         break;
     case NFA_DEACTIVATED_EVT:
     case NFA_CE_DEACTIVATED_EVT:
         {
             android::checkforTranscation(NFA_CE_DEACTIVATED_EVT, (void *)eventData);
-            routingManager.notifyDeactivated();
+            routingManager.notifyDeactivated(NFA_TECHNOLOGY_MASK_A);
         }
+#if (NXP_EXTNS == TRUE)
+        android::rfActivation = false;
+#endif
         break;
     case NFA_CE_DATA_EVT:
         {
-#if (NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE != PN547C2)
+#if (NFC_NXP_ESE == TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
             se.mRecvdTransEvt = true;
             se.mAllowWiredMode = true;
+            ALOGD("%s: Sem Post for mAllowWiredModeEvent", __FUNCTION__);
             SyncEventGuard guard (se.mAllowWiredModeEvent);
             se.mAllowWiredModeEvent.notifyOne();
 #endif
             tNFA_CE_DATA& ce_data = eventData->ce_data;
             ALOGD("%s: NFA_CE_DATA_EVT; stat=0x%X; h=0x%X; data len=%u", fn, ce_data.status, ce_data.handle, ce_data.len);
-            getInstance().handleData(ce_data.p_data, ce_data.len, ce_data.status);
+            getInstance().handleData(NFA_TECHNOLOGY_MASK_A, ce_data.p_data, ce_data.len, ce_data.status);
         }
         break;
     }
@@ -2171,13 +2654,12 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
             tNFA_EE_ACTION& action = eventData->action;
             tNFC_APP_INIT& app_init = action.param.app_init;
             android::checkforTranscation(NFA_EE_ACTION_EVT, (void *)eventData);
-#if (NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE != PN547C2)
+#if (NFC_NXP_ESE == TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
             se.mRecvdTransEvt = true;
 #endif
             if (action.trigger == NFC_EE_TRIG_SELECT)
             {
                 ALOGD ("%s: NFA_EE_ACTION_EVT; h=0x%X; trigger=select (0x%X); aid len=%u", fn, action.ee_handle, action.trigger, app_init.len_aid);
-                se.notifyTransactionListenersOfAid (app_init.aid, app_init.len_aid, NULL, 0, SecureElement::getInstance().getGenericEseId(action.ee_handle & ~NFA_HANDLE_GROUP_EE));
             }
             else if (action.trigger == NFC_EE_TRIG_APP_INIT)
             {
@@ -2202,7 +2684,7 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
             else
                 ALOGE ("%s: NFA_EE_ACTION_EVT; h=0x%X; unknown trigger (0x%X)", fn, action.ee_handle, action.trigger);
 
-#if((NXP_EXTNS == TRUE)&&(NFC_NXP_ESE == TRUE) && (NFC_NXP_CHIP_TYPE == PN548C2))
+#if((NXP_EXTNS == TRUE)&&(NFC_NXP_ESE == TRUE) && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
             if(action.ee_handle == 0x4C0)
             {
                 ALOGE ("%s: NFA_EE_ACTION_EVT; h=0x%X;DWP CL activated (0x%X)", fn, action.ee_handle, action.trigger);
@@ -2210,7 +2692,7 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
             }
 #endif
 
-#if (NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE != PN547C2)
+#if (NFC_NXP_ESE == TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
             /*if(action.ee_handle == 0x4C0 && (action.trigger != NFC_EE_TRIG_RF_TECHNOLOGY) &&
                !(action.trigger == NFC_EE_TRIG_RF_PROTOCOL && action.param.protocol == NFA_PROTOCOL_ISO_DEP))
             {
@@ -2257,6 +2739,7 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
             }
     if(se.mAllowWiredMode == true)
     {
+        ALOGD("%s: Sem Post for mAllowWiredModeEvent", __FUNCTION__);
         SyncEventGuard guard (se.mAllowWiredModeEvent);
         se.mAllowWiredModeEvent.notifyOne();
     }
@@ -2271,7 +2754,7 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
             ALOGD ("%s: NFA_EE_DISCOVER_EVT; status=0x%X; num ee=%u", __FUNCTION__,eventData->status, eventData->ee_discover.num_ee);
             if(android::isNfcInitializationDone() == true)
             {
-                if(mChipId == 0x02 || mChipId == 0x04)
+                if(mChipId == 0x02 || mChipId == 0x04 || mChipId == 0x06)
                 {
                     for(int xx = 0; xx <  num_ee; xx++)
                     {
@@ -2302,7 +2785,7 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
         ALOGD ("%s: NFA_EE_DISCOVER_REQ_EVT; status=0x%X; num ee=%u", __FUNCTION__,
                 eventData->discover_req.status, eventData->discover_req.num_ee);
 #if(NXP_EXTNS == TRUE)
-#if(NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE != PN547C2)
+#if(NFC_NXP_ESE == TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
         /* Handle Reader over SWP.
          * 1. Check if the event is for Reader over SWP.
          * 2. IF yes than send this info(READER_REQUESTED_EVENT) till FWK level.
@@ -2463,10 +2946,133 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
             ALOGD("%s: NFA_EE_UPDATED_EVT", fn);
             SyncEventGuard guard(routingManager.mEeUpdateEvent);
             routingManager.mEeUpdateEvent.notifyOne();
+            routingManager.LmrtRspTimer.kill();
         }
         break;
     default:
         ALOGE ("%s: unknown event=%u ????", fn, event);
+        break;
+    }
+}
+
+int RoutingManager::registerT3tIdentifier(UINT8* t3tId, UINT8 t3tIdLen)
+{
+    static const char fn [] = "RoutingManager::registerT3tIdentifier";
+
+    ALOGD ("%s: Start to register NFC-F system on DH", fn);
+
+    if (t3tIdLen != (2 + NCI_RF_F_UID_LEN))
+    {
+        ALOGE ("%s: Invalid length of T3T Identifier", fn);
+        return NFA_HANDLE_INVALID;
+    }
+
+#if(NXP_EXTNS == TRUE)
+      if (android::isDiscoveryStarted()) {
+      // Stop RF discovery to reconfigure
+      android::startRfDiscovery(false);
+      }
+#endif
+
+    SyncEventGuard guard (mRoutingEvent);
+    mNfcFOnDhHandle = NFA_HANDLE_INVALID;
+
+    int systemCode;
+    UINT8 nfcid2[NCI_RF_F_UID_LEN];
+
+    systemCode = (((int)t3tId[0] << 8) | ((int)t3tId[1] << 0));
+    memcpy(nfcid2, t3tId + 2, NCI_RF_F_UID_LEN);
+
+    tNFA_STATUS nfaStat = NFA_CeRegisterFelicaSystemCodeOnDH (systemCode, nfcid2, nfcFCeCallback);
+    if (nfaStat == NFA_STATUS_OK)
+    {
+        mRoutingEvent.wait ();
+    }
+    else
+    {
+        ALOGE ("%s: Fail to register NFC-F system on DH", fn);
+        return NFA_HANDLE_INVALID;
+    }
+
+    ALOGD ("%s: Succeed to register NFC-F system on DH", fn);
+
+    return mNfcFOnDhHandle;
+}
+
+void RoutingManager::deregisterT3tIdentifier(int handle)
+{
+    static const char fn [] = "RoutingManager::deregisterT3tIdentifier";
+
+    ALOGD ("%s: Start to deregister NFC-F system on DH", fn);
+
+#if(NXP_EXTNS == TRUE)
+     if (android::isDiscoveryStarted()) {
+     // Stop RF discovery to reconfigure
+     android::startRfDiscovery(false);
+      }
+#endif
+
+
+    SyncEventGuard guard (mRoutingEvent);
+    tNFA_STATUS nfaStat = NFA_CeDeregisterFelicaSystemCodeOnDH (handle);
+    if (nfaStat == NFA_STATUS_OK)
+    {
+        mRoutingEvent.wait ();
+        ALOGD ("%s: Succeeded in deregistering NFC-F system on DH", fn);
+    }
+    else
+    {
+        ALOGE ("%s: Fail to deregister NFC-F system on DH", fn);
+    }
+
+}
+
+void RoutingManager::nfcFCeCallback (UINT8 event, tNFA_CONN_EVT_DATA* eventData)
+{
+    static const char fn [] = "RoutingManager::nfcFCeCallback";
+    RoutingManager& routingManager = RoutingManager::getInstance();
+    ALOGD("%s: 0x%x", __FUNCTION__, event);
+
+    switch (event)
+    {
+    case NFA_CE_REGISTERED_EVT:
+        {
+            ALOGD ("%s: registerd event notified", fn);
+           routingManager.mNfcFOnDhHandle = eventData->ce_registered.handle;
+            SyncEventGuard guard(routingManager.mRoutingEvent);
+            routingManager.mRoutingEvent.notifyOne();
+        }
+        break;
+    case NFA_CE_DEREGISTERED_EVT:
+        {
+            ALOGD ("%s: deregisterd event notified", fn);
+            SyncEventGuard guard(routingManager.mRoutingEvent);
+            routingManager.mRoutingEvent.notifyOne();
+        }
+        break;
+   case NFA_CE_ACTIVATED_EVT:
+        {
+            ALOGD ("%s: activated event notified", fn);
+            routingManager.notifyActivated(NFA_TECHNOLOGY_MASK_F);
+        }
+        break;
+    case NFA_CE_DEACTIVATED_EVT:
+        {
+            ALOGD ("%s: deactivated event notified", fn);
+            routingManager.notifyDeactivated(NFA_TECHNOLOGY_MASK_F);
+        }
+        break;
+    case NFA_CE_DATA_EVT:
+        {
+            ALOGD ("%s: data event notified", fn);
+            tNFA_CE_DATA& ce_data = eventData->ce_data;
+            routingManager.handleData(NFA_TECHNOLOGY_MASK_F, ce_data.p_data, ce_data.len, ce_data.status);
+        }
+        break;
+    default:
+        {
+            ALOGE ("%s: unknown event=%u ????", fn, event);
+        }
         break;
     }
 }
@@ -2512,7 +3118,7 @@ int RoutingManager::com_android_nfc_cardemulation_doGetAidMatchingPlatform(JNIEn
            :When ever the second removal request is also reached , it is handled.
 
 */
-#if(NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE == PN548C2)
+#if(NFC_NXP_ESE == TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
 void reader_req_event_ntf (union sigval)
 {
     static const char fn [] = "RoutingManager::reader_req_event_ntf";
@@ -2543,6 +3149,9 @@ void reader_req_event_ntf (union sigval)
         e->CallVoidMethod (RoutingManager::getInstance().mNativeData->manager, android::gCachedNfcManagerNotifyETSIReaderModeStopConfig,disc_ntf_timeout);
     }
 }
+#endif
+#if(NXP_EXTNS == TRUE) && (NFC_NXP_ESE == TRUE)
+extern int active_ese_reset_control;
 #endif
 void *ee_removed_ntf_handler_thread(void* /* data */)
 {
@@ -2577,8 +3186,16 @@ void *ee_removed_ntf_handler_thread(void* /* data */)
     recovery=FALSE;
     se.mEEdatapacketEvent.notifyOne();
     rm.mResetHandlerMutex.unlock();
+#if(NXP_EXTNS == TRUE) && (NFC_NXP_ESE == TRUE)
+    if(active_ese_reset_control & TRANS_WIRED_ONGOING)
+    {
+        SyncEventGuard guard(se.mTransceiveEvent);
+        se.mTransceiveEvent.notifyOne();
+    }
+#endif
     ALOGD ("%s: exit sEseRemovedHandlerMutex lock ", fn);
     ALOGD ("%s: exit ", fn);
+    pthread_exit(NULL);
     return NULL;
 }
 
@@ -2599,7 +3216,7 @@ void RoutingManager::ee_removed_disc_ntf_handler(tNFA_HANDLE handle, tNFA_EE_STA
         ALOGE("Unable to create the thread");
     }
 }
-#if(NFC_NXP_ESE == TRUE && NFC_NXP_CHIP_TYPE == PN548C2)
+#if(NFC_NXP_ESE == TRUE && ((NFC_NXP_CHIP_TYPE == PN548C2) || (NFC_NXP_CHIP_TYPE == PN551)))
 /*******************************************************************************
 **
 ** Function:        getEtsiReaederState
@@ -2749,7 +3366,7 @@ void RoutingManager::handleSERemovedNtf()
     }
     else
     {
-        if(mChipId == 0x02 || mChipId == 0x04)
+        if(mChipId == 0x02 || mChipId == 0x04 || mChipId == 0x06)
         {
             for(int xx = 0; xx <  mActualNumEe; xx++)
             {
@@ -2764,5 +3381,19 @@ void RoutingManager::handleSERemovedNtf()
             }
         }
     }
+}
+/*******************************************************************************
+**
+** Function:        LmrtRspTimerCb
+**
+** Description:     Routing Timer callback
+**
+*******************************************************************************/
+static void LmrtRspTimerCb(union sigval)
+{
+   static const char fn [] = "LmrtRspTimerCb";
+   ALOGD ("%s:  ", fn);
+    SyncEventGuard guard(RoutingManager::getInstance().mEeUpdateEvent);
+    RoutingManager::getInstance().mEeUpdateEvent.notifyOne();
 }
 #endif

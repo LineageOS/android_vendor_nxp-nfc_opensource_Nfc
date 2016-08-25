@@ -23,6 +23,9 @@
          which is needed when building test cases. -->    
     <application>
         <uses-library android:name="android.test.runner" />
+        <uses-library android:name="com.nxp.nfc.nq"
+            android:required="true"
+            />
     </application>
 
     <!--
