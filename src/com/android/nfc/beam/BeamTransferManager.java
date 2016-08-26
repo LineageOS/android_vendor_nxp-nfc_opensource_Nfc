@@ -1,4 +1,7 @@
 /*
+ * Copyright (c) 2016, The Linux Foundation. All rights reserved.
+ * Not a Contribution.
+ *
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -35,6 +38,9 @@ import android.os.Message;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.util.Log;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.support.v4.content.FileProvider;
 
 import java.io.File;
 import java.text.SimpleDateFormat;
@@ -43,6 +49,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
+import java.util.List;
 
 /**
  * A BeamTransferManager object represents a set of files
@@ -468,10 +475,32 @@ public class BeamTransferManager implements Handler.Callback,
 
         String filePath = mPaths.get(0);
         Uri mediaUri = mMediaUris.get(filePath);
-        Uri uri =  mediaUri != null ? mediaUri :
-            Uri.parse(ContentResolver.SCHEME_FILE + "://" + filePath);
-        viewIntent.setDataAndTypeAndNormalize(uri, mMimeTypes.get(filePath));
-        viewIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        Uri uri = null;
+        if(mediaUri != null) {
+            //Check for mediaUri, media file Uri is not required to be converted to content Uri
+            uri = mediaUri;
+            viewIntent.setDataAndTypeAndNormalize(uri, mMimeTypes.get(filePath));
+            viewIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        }
+        else {
+            uri =  Uri.parse(ContentResolver.SCHEME_FILE + "://" + filePath);
+            File file = new File(uri.getPath());
+            Uri content_uri = FileProvider.getUriForFile(mContext,
+                        "com.android.nfc.fileprovider", file);
+            uri = content_uri;
+            viewIntent.setDataAndTypeAndNormalize(uri, mMimeTypes.get(filePath));
+            List<ResolveInfo> resInfoList = mContext.getPackageManager().queryIntentActivities(viewIntent,PackageManager.MATCH_DEFAULT_ONLY);
+            // Grant permissions for any app that can handle a file to access it
+            for (ResolveInfo resolveInfo : resInfoList) {
+                String packageName = resolveInfo.activityInfo.packageName;
+                mContext.grantUriPermission(packageName, content_uri,
+                                  Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
+                                   Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            }
+            viewIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            viewIntent.setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            viewIntent.setFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        }
         return viewIntent;
     }
 
