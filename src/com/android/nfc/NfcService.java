@@ -1617,9 +1617,9 @@ public class NfcService implements DeviceHostListener {
                 mPrefsEditor.putBoolean(PREF_NDEF_PUSH_ON, true);
                 mPrefsEditor.apply();
                 mIsNdefPushEnabled = true;
-                mDeviceHost.doEnablep2p(mIsNdefPushEnabled);
                 setBeamShareActivityState(true);
                 if (isNfcEnabled()) {
+                    mDeviceHost.doEnablep2p(mIsNdefPushEnabled);
                     mP2pLinkManager.enableDisable(true, true);
                 }
             }
@@ -3095,12 +3095,17 @@ public class NfcService implements DeviceHostListener {
                     // Deny access to the NFCEE as long as the device is being setup
                     return EE_ERROR_IO;
                 }
-                if (mP2pLinkManager.isLlcpActive()) {
-                    // Don't allow PN544-based devices to open the SE while the LLCP
-                    // link is still up or in a debounce state. This avoids race
-                    // conditions in the NXP stack around P2P/SMX switching.
-                    return EE_ERROR_EXT_FIELD;
-                }
+            }
+            // release NfcService lock to avoid deadlock
+            // when beam is invoked in parallel it aquires P2pLinkManager lock
+            // and wait for NfcService lock to be released
+            if (mP2pLinkManager.isLlcpActive()) {
+                // Don't allow PN544-based devices to open the SE while the LLCP
+                // link is still up or in a debounce state. This avoids race
+                // conditions in the NXP stack around P2P/SMX switching.
+                return EE_ERROR_EXT_FIELD;
+            }
+            synchronized(NfcService.this) {
                 if (mOpenEe != null) {
                     return EE_ERROR_ALREADY_OPEN;
                 }
@@ -3366,12 +3371,17 @@ public class NfcService implements DeviceHostListener {
                     // Deny access to the NFCEE as long as the device is being setup
                     return EE_ERROR_IO;
                 }
-                if (mP2pLinkManager.isLlcpActive()) {
-                    // Don't allow PN544-based devices to open the SE while the LLCP
-                    // link is still up or in a debounce state. This avoids race
-                    // conditions in the NXP stack around P2P/SMX switching.
-                    return EE_ERROR_EXT_FIELD;
-                }
+            }
+            // release NfcService lock to avoid deadlock
+            // when beam is invoked in parallel it aquires P2pLinkManager lock
+            // and wait for NfcService lock to be released
+            if (mP2pLinkManager.isLlcpActive()) {
+                // Don't allow PN544-based devices to open the SE while the LLCP
+                // link is still up or in a debounce state. This avoids race
+                // conditions in the NXP stack around P2P/SMX switching.
+                return EE_ERROR_EXT_FIELD;
+            }
+            synchronized(NfcService.this) {
                 if (mOpenEe != null) {
                     Log.i(TAG, "SE is Busy. returning..");
                     return EE_ERROR_ALREADY_OPEN;

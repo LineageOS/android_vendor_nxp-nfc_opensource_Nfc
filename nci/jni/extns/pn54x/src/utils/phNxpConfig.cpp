@@ -1,4 +1,6 @@
 /******************************************************************************
+ *  Copyright (c) 2016, The Linux Foundation. All rights reserved.
+ *  Not a Contribution.
  *
  *  Copyright (C) 2011-2012 Broadcom Corporation
  *
@@ -36,14 +38,28 @@
  *
  ******************************************************************************/
 
+ /**
+  * @file phNxpConfig.cpp
+  * @date 24 Aug 2016
+  * @brief File containing code for dynamic selection of config files based on target.
+  *
+  * The target device has to be configured with some primary setting while booting.So a
+  * config file will be picked while the target is booted. Here based on the target device
+  * a configuration file will be selected dynamically and the device will be configured.
+  */
+
 #include <phNxpConfig.h>
 #include <stdio.h>
 #include <string>
 #include <vector>
 #include <list>
 #include <sys/stat.h>
+#include <stdlib.h>
 
 #include <phNxpLog.h>
+#include <cutils/log.h>
+#include <cutils/properties.h>
+#include <errno.h>
 
 #if GENERIC_TARGET
 const char alternative_config_path[] = "/data/nfc/";
@@ -57,12 +73,55 @@ const char transport_config_path[] = "/etc/";
 const char transport_config_path[] = "res/";
 #endif
 
+/**
+ *  @brief defines the different config files used.
+ */
+
 #define config_name             "libnfc-nxp.conf"
 #define extra_config_base       "libnfc-nxp-"
 #define extra_config_ext        ".conf"
 #define IsStringValue           0x80000000
 
-const char config_timestamp_path[] = "/data/nfc/libnfc-nxpConfigState.bin";
+const char config_timestamp_path[]    = "/data/nfc/libnfc-nxpConfigState.bin";
+const char default_nxp_config_path[]  = "/etc/libnfc-nxp.conf";
+
+/**
+ *  @brief target platform ID values.
+ */
+
+typedef enum
+{
+  CONFIG_GENERIC                         = 0x00,
+  MTP_TYPE_DEFAULT                       = 0x01, /**< default MTP config. DC DC ON */
+  QRD_TYPE_DEFAULT                       = 0x02, /**< default QRD config DC DC OFF */
+  MTP_TYPE_1                             = 0x03, /**< mtp config type1 : newer chip */
+  MTP_TYPE_2                             = 0x04, /**< mtp config type2 TBD */
+  QRD_TYPE_1                             = 0x05, /**< qrd config type1 DC DC ON*/
+  QRD_TYPE_2                             = 0x06, /**< qrd config type2  Newer chip */
+  DEFAULT_CONFIG                         = QRD_TYPE_DEFAULT, /**< default is qrd default config */
+  CONFIG_INVALID                         = 0xFF
+} CONFIGIDVALUE;
+
+/**
+ *  @brief Defines the values for different types of targets.
+ */
+
+typedef enum
+{
+  TARGET_GENERIC                       = 0x00, /**< new targets */
+  TARGET_MSM8952                       = 264, /**< 8952 target */
+  TARGET_MSM8976                       = 278, /**< 8976 target */
+  TARGET_MSM8937                       = 294, /**< 8937 target */
+  TARGET_MSM8953                       = 293, /**< 8953 target */
+  TARGET_MSM8996                       = 246, /**< 8996 target*/
+  TARGET_MSM8909                       = 245, /**< 8909w target */
+  TARGET_MSM8998                       = 292, /**< 8998 target */
+  TARGET_MSM8997                       = 306, /**< 8997 target */
+  TARGET_MSM8917                       = 303, /**< 8997 target */
+  TARGET_MSM8940                       = 313, /**< 8997 target */
+  TARGET_DEFAULT                       = TARGET_GENERIC, /**< new targets */
+  TARGET_INVALID                       = 0xFF
+} TARGETTYPE;
 
 using namespace::std;
 
@@ -87,23 +146,25 @@ public:
     virtual ~CNxpNfcConfig ();
     static CNxpNfcConfig& GetInstance ();
     friend void readOptionalConfig (const char* optional);
-    int checkTimestamp ();
     int updateTimestamp ();
-
-    bool    getValue (const char* name, char* pValue, size_t len) const;
+    int checkTimestamp();
+    bool    getValue (const char* name, char* pValue, size_t& len) const;
     bool    getValue (const char* name, unsigned long& rValue) const;
     bool    getValue (const char* name, unsigned short & rValue) const;
-    bool    getValue (const char* name, char* pValue, long len, long* readlen) const;
+    bool    getValue (const char* name, char* pValue, unsigned long len, long* readlen) const;
     const CNxpNfcParam* find (const char* p_name) const;
     void  clean ();
 private:
     CNxpNfcConfig ();
     bool    readConfig (const char* name, bool bResetContent);
+    int     file_exist (const char* filename);
+    int     getconfiguration_id (char * config_file);
     void    moveFromList ();
     void    moveToList ();
     void    add (const CNxpNfcParam* pParam);
     list<const CNxpNfcParam*> m_list;
     bool    mValidFile;
+    bool    mDynamConfig;
     unsigned long m_timeStamp;
 
     unsigned long state;
@@ -112,6 +173,185 @@ private:
     inline void Set (unsigned long f) {state |= f;}
     inline void Reset (unsigned long f) {state &= ~f;}
 };
+
+/**
+ * @brief This function reads the hardware information from the given path.
+ *
+ * This function receives the path and then reads the hardware information
+ * from the file present in the given path. It reads the details like whether
+ * it is QRD or MTP. It reads the data from that file and stores in buffer.
+ * It also receives a count which tells the number of characters to be read
+ * Finally the length of the buffer is returned.
+ *
+ * @param path The path where the file containing hardware details to be read.
+ * @param buff The hardware details that is read from that path will be stored here.
+ * @param count It represents the number of characters to be read from that file.
+ * @return It returns the length of the buffer.
+ */
+
+static int read_line_from_file(const char *path, char *buf, size_t count)
+{
+    char *fgets_ret = NULL;
+    FILE *fd = NULL;
+    int rv = 0;
+
+    // opens the file to read the HW_PLATFORM detail of the target
+    fd = fopen(path, "r");
+    if (fd == NULL)
+        return -1;
+
+    // stores the data that is read from the given path into buf
+    fgets_ret = fgets(buf, (int)count, fd);
+    if (NULL != fgets_ret)
+        rv = (int)strlen(buf);
+    else
+        rv = ferror(fd);
+
+    fclose(fd);
+    return rv;
+}
+
+/**
+ * @brief This function gets the source information from the file.
+ *
+ * This function receives a buffer variable to store the read information
+ * and also receives two different path. The hardware information may be
+ * present in any one of the received path. So this function checks in
+ * both the paths. This function internally uses read_line_from_file
+ * function to read the check and read the hardware details in each path.
+ *
+ * @param buf hardware details that is read will be stored.
+ * @param soc_node_path1 The first path where the file may be present.
+ * @param soc_node_path2 The second path where the file may be present.
+ * @return Returns the length of buffer.
+ */
+
+static int get_soc_info(char *buf, const char *soc_node_path1,
+            const char *soc_node_path2)
+{
+    int ret = 0;
+
+    // checks whether the hw platform detail is present in this path
+    ret = read_line_from_file(soc_node_path1, buf, MAX_SOC_INFO_NAME_LEN);
+    if (ret < 0) {
+        // if the hw platform detail is not present in the former path it checks here
+        ret = read_line_from_file(soc_node_path2, buf, MAX_SOC_INFO_NAME_LEN);
+        if (ret < 0) {
+            ALOGE("getting socinfo(%s, %d) failed.\n", soc_node_path1, ret);
+            return ret;
+        }
+    }
+    if (ret && buf[ret - 1] == '\n')
+        buf[ret - 1] = '\0';
+    return ret;
+}
+
+/**
+ * @brief finds the cofiguration id value for the particular target.
+ *
+ * This function reads the soc id detail and hardware platform detail
+ * from the target device and generate a generic config file name.
+ * If that config file is present then it will be used for configuring
+ * that target.
+ * If not then based on the target information a config file will be assigned.
+ *
+ * @param config_file The generic config file name will be stored.
+ * @return it returns the config id for the target.
+ */
+
+int CNxpNfcConfig::getconfiguration_id(char *config_file)
+{
+    int config_id = QRD_TYPE_DEFAULT;
+    char target_type[MAX_SOC_INFO_NAME_LEN] = {'\0'};
+    char soc_info[MAX_SOC_INFO_NAME_LEN] = {'\0'};
+    string strPath;
+    int rc = 0;
+    int idx = 0;
+
+    rc = get_soc_info(soc_info, SYSFS_SOCID_PATH1, SYSFS_SOCID_PATH2);
+    if (rc < 0) {
+        ALOGE("get_soc_info(SOC_ID) fail!\n");
+        return DEFAULT_CONFIG;
+    }
+    idx = atoi(soc_info);
+
+    rc = get_soc_info(target_type, SYSFS_HW_PLATFORM_PATH1, SYSFS_HW_PLATFORM_PATH2);
+    if (rc < 0) {
+        ALOGE("get_soc_info(HW_PLATFORM) fail!\n");
+        return DEFAULT_CONFIG;
+    }
+
+    // Converting the HW_PLATFORM detail that is read from target to lowercase
+    for (int i=0;target_type[i];i++)
+        target_type[i] = tolower(target_type[i]);
+
+    // generating a generic config file name based on the target details
+    snprintf(config_file, MAX_DATA_CONFIG_PATH_LEN, "libnfc-%s_%s.conf",
+        soc_info, target_type);
+
+    strPath.assign (transport_config_path);
+    strPath += config_file;
+    if (file_exist(strPath.c_str()))
+        idx = 0;
+
+    if (DEBUG)
+        ALOGI("id:%d, config_file_name:%s\n", idx, config_file);
+
+    // if target is QRD platform then config id is assigned here
+    if (0 == strncmp(target_type, QRD_HW_PLATFORM, MAX_SOC_INFO_NAME_LEN)) {
+        switch (idx)
+        {
+        case TARGET_GENERIC:
+            config_id = CONFIG_GENERIC;
+            break;
+        case TARGET_MSM8952:
+        case TARGET_MSM8953:
+        case TARGET_MSM8937:
+        case TARGET_MSM8909:
+        case TARGET_MSM8940:
+        case TARGET_MSM8917:
+            config_id = QRD_TYPE_DEFAULT;
+            strncpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
+            break;
+        case TARGET_MSM8976:
+        case TARGET_MSM8996:
+            config_id = QRD_TYPE_1;
+            strncpy(config_file, config_name_qrd1, MAX_DATA_CONFIG_PATH_LEN);
+            break;
+        case TARGET_MSM8998:
+        case TARGET_MSM8997:
+            config_id = QRD_TYPE_2;
+            strncpy(config_file, config_name_qrd2, MAX_DATA_CONFIG_PATH_LEN);
+            break;
+        default:
+            config_id = QRD_TYPE_DEFAULT;
+            strncpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
+            break;
+        }
+    }
+    // if target is MTP platform then config id is assigned here
+    else if (0 == strncmp(target_type, MTP_HW_PLATFORM, MAX_SOC_INFO_NAME_LEN)) {
+        switch (idx)
+        {
+        case TARGET_GENERIC:
+            config_id = CONFIG_GENERIC;
+            break;
+        case TARGET_MSM8998:
+        case TARGET_MSM8997:
+            config_id = MTP_TYPE_1;
+            strncpy(config_file, config_name_mtp1, MAX_DATA_CONFIG_PATH_LEN);
+            break;
+        default:
+            config_id = MTP_TYPE_DEFAULT;
+            strncpy(config_file, config_name_mtp, MAX_DATA_CONFIG_PATH_LEN);
+            break;
+        }
+    }
+    if (DEBUG)
+        ALOGI("platform config id:%d, config_file_name:%s\n", config_id, config_file);
+
+    return config_id;
+}
 
 /*******************************************************************************
 **
@@ -208,7 +448,8 @@ bool CNxpNfcConfig::readConfig (const char* name, bool bResetContent)
     char    c;
     int     bflag = 0;
     state = BEGIN_LINE;
-    /* open config file, read it into a buffer */
+
+    //open config file, read it into a buffer
     if ((fd = fopen (name, "rb")) == NULL)
     {
         ALOGE ("%s Cannot open config file %s\n", __func__, name);
@@ -220,7 +461,14 @@ bool CNxpNfcConfig::readConfig (const char* name, bool bResetContent)
         return false;
     }
     stat (name, &buf);
-    m_timeStamp = (unsigned long) buf.st_mtime;
+
+    if(mDynamConfig)
+        m_timeStamp = (unsigned long)buf.st_mtime;
+    else
+    {
+        if(strcmp(default_nxp_config_path, name) == 0)
+            m_timeStamp = (unsigned long)buf.st_mtime;
+    }
 
     mValidFile = true;
     if (size() > 0)
@@ -237,10 +485,11 @@ bool CNxpNfcConfig::readConfig (const char* name, bool bResetContent)
         {
             if (state == BEGIN_LINE)
                 break;
-
-            // got to the EOF but not in BEGIN_LINE state so the file
-            // probably does not end with a newline, so the parser has
-            // not processed current line, simulate a newline in the file
+            /**
+             * got to the EOF but not in BEGIN_LINE state so the file
+             * probably does not end with a newline, so the parser has
+             * not processed current line, simulate a newline in the file
+             */
             c = '\n';
         }
         switch (state & 0xff)
@@ -433,6 +682,7 @@ bool CNxpNfcConfig::readConfig (const char* name, bool bResetContent)
 *******************************************************************************/
 CNxpNfcConfig::CNxpNfcConfig () :
     mValidFile (true),
+    mDynamConfig(true),
     m_timeStamp (0),
     state (0)
 {
@@ -451,6 +701,22 @@ CNxpNfcConfig::~CNxpNfcConfig ()
 {
 }
 
+/**
+ * @brief checks whether the given file exist.
+ *
+ * This function gets the file name and checks whether the given file
+ * exist in the particular path.Internaly it uses stat system call to
+ * find the existance.
+ *
+ * @param filename The name of the file whose existance has to be checked.
+ * @return it returns true if the given file name exist.
+ */
+int CNxpNfcConfig::file_exist (const char* filename)
+{
+    struct stat   buffer;
+    return (stat (filename, &buffer) == 0);
+}
+
 /*******************************************************************************
 **
 ** Function:    CNxpNfcConfig::GetInstance()
@@ -463,6 +729,8 @@ CNxpNfcConfig::~CNxpNfcConfig ()
 CNxpNfcConfig& CNxpNfcConfig::GetInstance ()
 {
     static CNxpNfcConfig theInstance;
+    int gconfigpathid = 0;
+    char config_name_generic[MAX_DATA_CONFIG_PATH_LEN] = {'\0'};
 
     if (theInstance.size () == 0 && theInstance.mValidFile)
     {
@@ -479,6 +747,28 @@ CNxpNfcConfig& CNxpNfcConfig::GetInstance ()
         }
         strPath.assign (transport_config_path);
         strPath += config_name;
+        //checks whether the default config file is present in th target
+        if (theInstance.file_exist(strPath.c_str()))
+        {
+            ALOGI("default config file exists = %s, dynamic selection disabled", strPath.c_str());
+            theInstance.mDynamConfig = false;
+            theInstance.readConfig(strPath.c_str(), true);
+            /*
+             * if libnfc-nxp.conf exists then dynamic selection will
+             * be turned off by default we will not have this file.
+             */
+            return theInstance;
+        }
+        strPath.assign(transport_config_path);
+
+        gconfigpathid = theInstance.getconfiguration_id(config_name_generic);
+        strPath += config_name_generic;
+        if (!(theInstance.file_exist(strPath.c_str()))) {
+           ALOGI("no matching file found, using default file for stability\n");
+           strPath.assign(transport_config_path);
+           strPath += config_name_default;
+        }
+        ALOGI("config file used = %s\n", strPath.c_str());
         theInstance.readConfig (strPath.c_str (), true);
     }
 
@@ -495,7 +785,7 @@ CNxpNfcConfig& CNxpNfcConfig::GetInstance ()
 **              false if setting does not exist
 **
 *******************************************************************************/
-bool CNxpNfcConfig::getValue (const char* name, char* pValue, size_t len) const
+bool CNxpNfcConfig::getValue (const char* name, char* pValue, size_t& len) const
 {
     const CNxpNfcParam* pParam = find (name);
     if (pParam == NULL)
@@ -504,13 +794,15 @@ bool CNxpNfcConfig::getValue (const char* name, char* pValue, size_t len) const
     if (pParam->str_len () > 0)
     {
         memset (pValue, 0, len);
-        memcpy (pValue, pParam->str_value (), pParam->str_len ());
+        if (len > pParam->str_len() - 1)
+            len  = pParam->str_len() - 1;
+        memcpy(pValue, pParam->str_value(), len);
         return true;
     }
     return false;
 }
 
-bool CNxpNfcConfig::getValue (const char* name, char* pValue, long len,long* readlen) const
+bool CNxpNfcConfig::getValue (const char* name, char* pValue,unsigned long len,long* readlen) const
 {
     const CNxpNfcParam* pParam = find (name);
     if (pParam == NULL)
@@ -518,7 +810,7 @@ bool CNxpNfcConfig::getValue (const char* name, char* pValue, long len,long* rea
 
     if (pParam->str_len () > 0)
     {
-        if(pParam->str_len () <= (unsigned long) len)
+        if(pParam->str_len() <= len)
         {
             memset (pValue, 0, len);
             memcpy (pValue, pParam->str_value (), pParam->str_len ());
@@ -818,14 +1110,16 @@ CNxpNfcParam::CNxpNfcParam (const char* name, unsigned long value) :
 **
 ** Description: API function for getting a string value of a setting
 **
-** Returns:     True if found, otherwise False.
+** Returns:     length if found, FALSE[0] otherwise.
 **
 *******************************************************************************/
-extern "C" int GetNxpStrValue (const char* name, char* pValue, unsigned long len)
+extern "C" int GetNxpStrValue (const char* name, char* pValue, unsigned long l)
 {
+    size_t len = l;
     CNxpNfcConfig& rConfig = CNxpNfcConfig::GetInstance ();
 
-    return rConfig.getValue (name, pValue, len);
+    bool b = rConfig.getValue(name, pValue, len);
+    return b ? len : 0;
 }
 
 /*******************************************************************************
@@ -844,7 +1138,7 @@ extern "C" int GetNxpStrValue (const char* name, char* pValue, unsigned long len
 ** Returns:     TRUE[1] if config param name is found in the config file, else FALSE[0]
 **
 *******************************************************************************/
-extern "C" int GetNxpByteArrayValue (const char* name, char* pValue, long bufflen, long *len)
+extern "C" int GetNxpByteArrayValue (const char* name, char* pValue, unsigned long bufflen, long *len)
 {
     CNxpNfcConfig& rConfig = CNxpNfcConfig::GetInstance ();
 
