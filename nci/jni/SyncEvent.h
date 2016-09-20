@@ -168,4 +168,3 @@ public:
 private:
     SyncEvent& mEvent;
 };
-

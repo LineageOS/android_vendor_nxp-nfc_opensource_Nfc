@@ -536,4 +536,3 @@ public class BeamTransferManager implements Handler.Callback,
         return newFile;
     }
 }
-
