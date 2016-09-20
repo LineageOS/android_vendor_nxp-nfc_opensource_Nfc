@@ -499,4 +499,7 @@ public class NativeNfcManager implements DeviceHost {
         mListener.onSeMifareAccess(block);
     }
 
+    @Override
+    public native byte[] getAdditionalConfigOptions();
+
 }

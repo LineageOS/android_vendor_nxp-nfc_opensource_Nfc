@@ -94,6 +94,9 @@ int updateNxpConfigTimestamp ();
 #define NAME_NXP_ESE_WIRED_PRT_MASK          "NXP_ESE_WIRED_PRT_MASK"
 #define NAME_NXP_ENABLE_ADD_AID              "NXP_ENABLE_ADD_AID"
 #define NAME_NXP_ADDITIONAL_CONFIG_OPTIONS   "NXP_ADDITIONAL_CONFIG_OPTIONS"
+#if(NXP_ESE_POWER_MODE==TRUE)
+#define NAME_NXP_ESE_POWER_DH_CONTROL         "NXP_ESE_POWER_DH_CONTROL"
+#endif
 
 /**
  *  @brief defines the different config files used.

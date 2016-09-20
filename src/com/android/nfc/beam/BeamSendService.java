@@ -67,7 +67,7 @@ public class BeamSendService extends Service implements BeamTransferManager.Call
 
     @Override
     public void onCreate() {
-       super.onCreate();
+        super.onCreate();
 
         mSoundPool = new SoundPool(1, AudioManager.STREAM_NOTIFICATION, 0);
         mSuccessSound = mSoundPool.load(this, R.raw.end, 1);
@@ -96,7 +96,7 @@ public class BeamSendService extends Service implements BeamTransferManager.Call
 
         BeamTransferRecord transferRecord;
         if (intent == null ||
-               (transferRecord = intent.getParcelableExtra(EXTRA_BEAM_TRANSFER_RECORD)) == null) {
+                (transferRecord = intent.getParcelableExtra(EXTRA_BEAM_TRANSFER_RECORD)) == null) {
             if (DBG) Log.e(TAG, "No transfer record provided. Stopping.");
             stopSelf(startId);
             return START_NOT_STICKY;
@@ -165,7 +165,7 @@ public class BeamSendService extends Service implements BeamTransferManager.Call
                     mTransferManager.mDataLinkType == BeamTransferRecord.DATA_LINK_TYPE_BLUETOOTH) {
                 mTransferManager.start();
             }
-       } else if (state == BluetoothAdapter.STATE_OFF) {
+        } else if (state == BluetoothAdapter.STATE_OFF) {
             mBluetoothEnabledByNfc = false;
         }
     }

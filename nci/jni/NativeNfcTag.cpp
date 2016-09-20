@@ -51,7 +51,6 @@ namespace android
 {
     extern nfc_jni_native_data* getNative(JNIEnv *e, jobject o);
     extern bool nfcManager_isNfcActive();
-    extern int gGeneralTransceiveTimeout;
     extern UINT16 getrfDiscoveryDuration();
 }
 
@@ -84,7 +83,7 @@ namespace android
 
 // Pre-defined tag type values. These must match the values in
 // framework Ndef.java for Google public NFC API.
-#define NDEF_UNKNOWN_TYPE          -1
+#define NDEF_UNKNOWN_TYPE          (-1)
 #define NDEF_TYPE1_TAG             1
 #define NDEF_TYPE2_TAG             2
 #define NDEF_TYPE3_TAG             3
@@ -923,11 +922,11 @@ TheEnd:
 void setReconnectState(bool flag)
 {
     sReconnectFlag = flag;
-    ALOGE("setReconnectState = 0x%x",sReconnectFlag );
+    ALOGD ("setReconnectState = 0x%x",sReconnectFlag );
 }
 bool getReconnectState(void)
 {
-    ALOGE("getReconnectState = 0x%x",sReconnectFlag );
+    ALOGD ("getReconnectState = 0x%x",sReconnectFlag );
     return sReconnectFlag;
 }
 /*******************************************************************************
@@ -1375,7 +1374,6 @@ static jboolean nativeNfcTag_doDisconnect (JNIEnv*, jobject)
     tNFA_STATUS nfaStat = NFA_STATUS_OK;
 
     NfcTag::getInstance().resetAllTransceiveTimeouts ();
-    gGeneralTransceiveTimeout = DEFAULT_GENERAL_TRANS_TIMEOUT;
 #if(NXP_EXTNS == TRUE && NFC_NXP_NON_STD_CARD == TRUE)
     if(sNonNciCard_t.Changan_Card == true || sNonNciCard_t.chinaTransp_Card == true)
     {
@@ -1549,7 +1547,7 @@ static jbyteArray nativeNfcTag_doTransceive (JNIEnv* e, jobject o, jbyteArray da
                 ALOGE ("%s: fail send; error=%d", __FUNCTION__, status);
                 break;
             }
-            waitOk = sTransceiveEvent.wait (gGeneralTransceiveTimeout);
+            waitOk = sTransceiveEvent.wait (timeout);
         }
 
         if (waitOk == false || sTransceiveRfTimeout) //if timeout occurred
@@ -2114,6 +2112,8 @@ static jboolean nativeNfcTag_doPresenceCheck (JNIEnv*, jobject)
         UINT8 *pbuf = NULL;
         UINT8 bufLen = 0x00;
         bool waitOk = false;
+        int timeout = NfcTag::getInstance ().getTransceiveTimeout (sCurrentConnectedTargetType);
+        ALOGD ("%s: enter; timeout = %d", __FUNCTION__, timeout);
 
         SyncEventGuard g (sTransceiveEvent);
         sTransceiveRfTimeout = false;
@@ -2128,7 +2128,7 @@ static jboolean nativeNfcTag_doPresenceCheck (JNIEnv*, jobject)
             ALOGE ("%s: fail send; error=%d", __FUNCTION__, status);
         }
         else
-            waitOk = sTransceiveEvent.wait (gGeneralTransceiveTimeout);
+            waitOk = sTransceiveEvent.wait (timeout);
 
         if (waitOk == false || sTransceiveRfTimeout) //if timeout occurred
         {

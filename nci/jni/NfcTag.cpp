@@ -72,8 +72,8 @@ NfcTag::NfcTag ()
     mLastKovioUidLen (0),
     mNdefDetectionTimedOut (false),
     mIsDynamicTagId (false),
-    mPresenceCheckAlgorithm (NFA_RW_PRES_CHK_DEFAULT),
-    mIsFelicaLite(false)
+    mIsFelicaLite(false),
+    mPresenceCheckAlgorithm (NFA_RW_PRES_CHK_DEFAULT)
 {
     memset (mTechList, 0, sizeof(mTechList));
     memset (mTechHandles, 0, sizeof(mTechHandles));
@@ -329,7 +329,7 @@ void NfcTag::discoverTechnologies (tNFA_ACTIVATED& activationData)
     tNFC_ACTIVATE_DEVT& rfDetail = activationData.activate_ntf;
 
     mNumTechList = mTechListIndex;
-    ALOGE ("mNumTechList =%d, mTechListIndex=%d", mNumTechList, mTechListIndex);
+    ALOGD ("mNumTechList =%d, mTechListIndex=%d", mNumTechList, mTechListIndex);
 #if(NXP_EXTNS == TRUE)
     if (mNumTechList >= MAX_NUM_TECHNOLOGY)
     {
@@ -476,7 +476,7 @@ void NfcTag::discoverTechnologies (tNFA_ACTIVATED& activationData)
     }
     else if(NFC_PROTOCOL_MIFARE == rfDetail.protocol)
     {
-        ALOGE ("Mifare Classic detected");
+        ALOGD ("Mifare Classic detected");
         EXTNS_MfcInit(activationData);
         mTechList [mNumTechList] = TARGET_TYPE_ISO14443_3A;  //is TagTechnology.NFC_A by Java API
         // could be MifFare UL or Classic or Kovio
@@ -709,7 +709,7 @@ void NfcTag::createNativeNfcTag (tNFA_ACTIVATED& activationData)
     }
     mNativeData->tag = e->NewGlobalRef(tag.get());
 
-    ALOGE("%s; mNumDiscNtf=%x", fn,mNumDiscNtf);
+    ALOGD ("%s; mNumDiscNtf=%x", fn,mNumDiscNtf);
     if(!mNumDiscNtf || NfcTag::getInstance().checkNextValidProtocol() == -1)
     {
         //notify NFC service about this new tag
@@ -726,7 +726,7 @@ void NfcTag::createNativeNfcTag (tNFA_ACTIVATED& activationData)
     }
     else
     {
-        ALOGE("%s: Selecting next tag", fn);
+        ALOGD ("%s: Selecting next tag", fn);
     }
 
     ALOGD ("%s: exit", fn);
@@ -853,7 +853,6 @@ void NfcTag::fillNativeNfcTagMembers3 (JNIEnv* e, jclass tag_cls, jobject tag, t
     ScopedLocalRef<jclass> byteArrayClass(e, e->GetObjectClass(pollBytes.get()));
     ScopedLocalRef<jobjectArray> techPollBytes(e, e->NewObjectArray(mNumTechList, byteArrayClass.get(), 0));
     int len = 0;
-    jobject obj1;
     if(mTechListIndex == 0)
     {
         techPollBytes2= reinterpret_cast<jobjectArray>(e->NewGlobalRef(techPollBytes.get()));
@@ -862,8 +861,8 @@ void NfcTag::fillNativeNfcTagMembers3 (JNIEnv* e, jclass tag_cls, jobject tag, t
     {
         for(int j=0;j<mTechListIndex;j++)
         {
-            obj1 = e->GetObjectArrayElement(techPollBytes2,j);
-            e->SetObjectArrayElement(techPollBytes.get(),j,obj1);
+            ScopedLocalRef<jobject> obj1(e, e->GetObjectArrayElement(techPollBytes2, j));
+            e->SetObjectArrayElement(techPollBytes.get(), j, obj1.get());
         }
     }
 
@@ -1001,7 +1000,6 @@ void NfcTag::fillNativeNfcTagMembers4 (JNIEnv* e, jclass tag_cls, jobject tag, t
     ScopedLocalRef<jbyteArray> actBytes(e, e->NewByteArray(0));
     ScopedLocalRef<jclass> byteArrayClass(e, e->GetObjectClass(actBytes.get()));
     ScopedLocalRef<jobjectArray> techActBytes(e, e->NewObjectArray(mNumTechList, byteArrayClass.get(), 0));
-    jobject obj1;
     if(mTechListIndex == 0)
     {
         techActBytes1 = reinterpret_cast<jobjectArray>(e->NewGlobalRef(techActBytes.get()));
@@ -1010,8 +1008,8 @@ void NfcTag::fillNativeNfcTagMembers4 (JNIEnv* e, jclass tag_cls, jobject tag, t
     {
         for(int j=0;j < mTechListIndex;j++)
         {
-            obj1 = e->GetObjectArrayElement(techActBytes1,j);
-            e->SetObjectArrayElement(techActBytes.get(), j, obj1);
+            ScopedLocalRef<jobject> obj1(e, e->GetObjectArrayElement(techActBytes1, j));
+            e->SetObjectArrayElement(techActBytes.get(), j, obj1.get());
         }
     }
 

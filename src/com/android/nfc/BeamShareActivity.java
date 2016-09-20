@@ -28,11 +28,11 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.Uri;
 import android.nfc.BeamShareData;
-import android.os.UserHandle;
 import android.nfc.NdefMessage;
 import android.nfc.NdefRecord;
 import android.nfc.NfcAdapter;
 import android.os.Bundle;
+import android.os.UserHandle;
 import android.util.Log;
 import android.webkit.URLUtil;
 
