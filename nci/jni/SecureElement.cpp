@@ -342,9 +342,9 @@ bool SecureElement::initialize (nfc_jni_native_data* native)
     if (GetNxpNumValue(NAME_NXP_NFCC_PASSIVE_LISTEN_TIMEOUT, &mPassiveListenTimeout, sizeof(mPassiveListenTimeout)) == false)
     {
         mPassiveListenTimeout = 2500;
-        ALOGD ("%s: NFCC Passive Listen Disable timeout =%d", fn, mPassiveListenTimeout);
+        ALOGD ("%s: NFCC Passive Listen Disable timeout =%lu", fn, mPassiveListenTimeout);
     }
-    ALOGD ("%s: NFCC Passive Listen Disable timeout =%d", fn, mPassiveListenTimeout);
+    ALOGD ("%s: NFCC Passive Listen Disable timeout =%lu", fn, mPassiveListenTimeout);
 #endif
     if (GetNxpNumValue(NAME_NXP_NFCC_STANDBY_TIMEOUT, &nfccStandbytimeout, sizeof(nfccStandbytimeout)) == false)
     {
@@ -2830,7 +2830,7 @@ bool SecureElement::getAtr(jint seID, UINT8* recvBuffer, INT32 *recvBufferSize)
         }
         if(mAbortEventWaitOk == false)
         {
-            ALOGE("%s (EVT_ABORT)Wait reposne timeout");
+            ALOGE("%s: (EVT_ABORT)Wait reposne timeout", fn);
             nfaStat = NFA_STATUS_FAILED;
         }
         else
@@ -4018,7 +4018,7 @@ tNFA_STATUS SecureElement::SecElem_EeModeSet(uint16_t handle, uint8_t mode)
  **********************************************************************************/
 UINT16 SecureElement::getEeStatus(UINT16 eehandle)
 {
-    int i;
+    int i = 0;
     UINT16 ee_status = NFA_EE_STATUS_REMOVED;
     ALOGD("%s  num_nfcee_present = %d",__FUNCTION__,mNfceeData_t.mNfceePresent);
 

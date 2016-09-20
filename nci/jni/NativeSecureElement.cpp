@@ -507,7 +507,6 @@ static jboolean nativeNfcSecureElement_doResetSecureElement (JNIEnv*, jobject, j
 {
     bool stat = false;
 #if (NFC_NXP_ESE == TRUE)
-    tNFA_STATUS mstatus;
     SecureElement &se = SecureElement::getInstance();
     unsigned long num = 0;
     ALOGD("%s: enter; handle=0x%04x", __FUNCTION__, handle);
@@ -522,6 +521,7 @@ static jboolean nativeNfcSecureElement_doResetSecureElement (JNIEnv*, jobject, j
     }
 
 #if(NXP_ESE_RESET_METHOD == TRUE)
+    tNFA_STATUS mstatus;
     if((num == 2) && (se.isEtsi12ApduGatePresent()))
     {
         ALOGD("Power Scheme : Ext PMU");

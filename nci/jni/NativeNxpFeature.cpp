@@ -62,7 +62,9 @@ static void NxpResponse_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param);
 static void NxpResponse_SetDhlf_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param);
 static void NxpResponse_SetVenConfig_Cb(UINT8 event, UINT16 param_len, UINT8 *p_param);
 #if(NXP_EXTNS == TRUE)
+#if (JCOP_WA_ENABLE == TRUE)
 static tNFA_STATUS NxpNfc_Send_CoreResetInit_Cmd(void);
+#endif
 #endif
 }
 
@@ -835,6 +837,7 @@ tNFA_STATUS NxpNfc_Write_Cmd_Common(uint8_t retlen, uint8_t* buffer)
 }
 #endif
 #if(NXP_EXTNS == TRUE)
+#if (JCOP_WA_ENABLE == TRUE)
 /*******************************************************************************
  **
  ** Function:        NxpNfc_Send_CoreResetInit_Cmd()
@@ -884,5 +887,6 @@ tNFA_STATUS NxpNfc_Send_CoreResetInit_Cmd(void)
     }
     return status;
 }
+#endif
 #endif
 } /*namespace android*/

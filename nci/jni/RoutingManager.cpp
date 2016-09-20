@@ -58,9 +58,6 @@ const JNINativeMethod RoutingManager::sMethods [] =
 
 static UINT16 rdr_req_handling_timeout = 50;
 
-#if((NXP_EXTNS == TRUE) && (NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE))
-static int mSetDefaulRouteParams;
-#endif
 #if(NFC_NXP_ESE == TRUE && (NFC_NXP_CHIP_TYPE != PN547C2))
 Rdr_req_ntf_info_t swp_rdr_req_ntf_info;
 static IntervalTimer swp_rd_req_timer;
@@ -273,7 +270,7 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
     else
     {
         gSeDiscoverycount = ActualNumEe;
-        ALOGD ("%s:gSeDiscoverycount=0x%X;", __FUNCTION__, gSeDiscoverycount);
+        ALOGD ("%s:gSeDiscoverycount=0x%lX;", __FUNCTION__, gSeDiscoverycount);
 #if 0
         if(mChipId == 0x02 || mChipId == 0x04)
         {
@@ -591,7 +588,6 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
 {
     static const char fn []           = "RoutingManager::setDefaultRoute";
     tNFA_STATUS       nfaStat         = NFA_STATUS_FAILED;
-    tNFA_HANDLE       preferredHandle = ROUTE_LOC_UICC1_ID;
 
     ALOGD ("%s: enter; defaultRoute:0x%2X protoRoute:0x%2X TechRoute:0x%2X HostListenMask:0x%X", fn, defaultRoute, protoRoute, techRoute, mHostListnTechMask);
 
@@ -601,7 +597,7 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
     mDefaultIso7816SeID = (((defaultRoute & 0x60) >> 5) == 0x00) ? ROUTE_LOC_HOST_ID : ((((defaultRoute & 0x60)>>5 )== 0x01 ) ? ROUTE_LOC_ESE_ID : ROUTE_LOC_UICC1_ID);
 #endif
     mDefaultIso7816Powerstate = defaultRoute & 0x1F;
-    ALOGD ("%s:mDefaultIso7816SeID:0x%2X mDefaultIso7816Powerstate:0x%X", fn, mDefaultIso7816SeID, mDefaultIso7816Powerstate);
+    ALOGD ("%s:mDefaultIso7816SeID:0x%2lX mDefaultIso7816Powerstate:0x%lX", fn, mDefaultIso7816SeID, mDefaultIso7816Powerstate);
 
 #if(NXP_NFCC_DYNAMIC_DUAL_UICC == TRUE)
     mDefaultIsoDepSeID = ((((protoRoute & 0xE0) >> 5) == 0x00) ? ROUTE_LOC_HOST_ID : ((((protoRoute & 0xE0)>>5 )== 0x01 ) ? ROUTE_LOC_ESE_ID : ((((protoRoute & 0xE0)>>5 )== 0x02 ) ? ROUTE_LOC_UICC1_ID : ROUTE_LOC_UICC2_ID)));
@@ -609,7 +605,7 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
     mDefaultIsoDepSeID = (((protoRoute & 0x60) >> 5) == 0x00) ? ROUTE_LOC_HOST_ID : ((((protoRoute & 0x60)>>5 )== 0x01 ) ? ROUTE_LOC_ESE_ID : ROUTE_LOC_UICC1_ID);
 #endif
     mDefaultIsoDepPowerstate = protoRoute & 0x1F;
-    ALOGD ("%s:mDefaultIsoDepSeID:0x%2X mDefaultIsoDepPowerstate:0x%2X", fn, mDefaultIsoDepSeID,mDefaultIsoDepPowerstate);
+    ALOGD ("%s:mDefaultIsoDepSeID:0x%2lX mDefaultIsoDepPowerstate:0x%2lX", fn, mDefaultIsoDepSeID,mDefaultIsoDepPowerstate);
 
 #if(NXP_NFCC_DYNAMIC_DUAL_UICC == TRUE)
     mDefaultTechASeID = ((((techRoute & 0x60) >> 5) == 0x00) ? ROUTE_LOC_HOST_ID : ((((techRoute & 0x60)>>5 )== 0x01 ) ? ROUTE_LOC_ESE_ID : ((((techRoute & 0x60)>>5 ) == 0x02)? ROUTE_LOC_UICC1_ID : ROUTE_LOC_UICC2_ID)));
@@ -618,7 +614,7 @@ bool RoutingManager::setDefaultRoute(const UINT8 defaultRoute, const UINT8 proto
 #endif
     mDefaultTechAPowerstate = techRoute & 0x1F;
 
-    ALOGD ("%s:mDefaultTechASeID:0x%2X mDefaultTechAPowerstate:0x%2X", fn, mDefaultTechASeID,mDefaultTechAPowerstate);
+    ALOGD ("%s:mDefaultTechASeID:0x%2lX mDefaultTechAPowerstate:0x%2lX", fn, mDefaultTechASeID,mDefaultTechAPowerstate);
 
     if (mHostListnTechMask)
     {
@@ -668,12 +664,12 @@ void RoutingManager::printMemberData()
     ALOGD("%s: AID_MATCHING_PLATFORM = 0x%0X", __FUNCTION__, mAidMatchingPlatform);
     ALOGD("%s: HOST_LISTEN_TECH_MASK = 0x%0X;", __FUNCTION__, mHostListnTechMask);
     ALOGD("%s: UICC_LISTEN_TECH_MASK = 0x%0X;", __FUNCTION__, mUiccListnTechMask);
-    ALOGD("%s: DEFAULT_FELICA_CLT_ROUTE = 0x%0X;", __FUNCTION__, mDefaultTechFSeID);
-    ALOGD("%s: DEFAULT_FELICA_CLT_PWR_STATE = 0x%0X;", __FUNCTION__, mDefaultTechFPowerstate);
+    ALOGD("%s: DEFAULT_FELICA_CLT_ROUTE = 0x%0lX;", __FUNCTION__, mDefaultTechFSeID);
+    ALOGD("%s: DEFAULT_FELICA_CLT_PWR_STATE = 0x%0lX;", __FUNCTION__, mDefaultTechFPowerstate);
 
     ALOGD("%s: NXP_NFC_CHIP = 0x%0X;", __FUNCTION__, mChipId);
     ALOGD("%s: NXP_DEFAULT_SE = 0x%0X;", __FUNCTION__, mDefaultEe);
-    ALOGD("%s: NXP_ENABLE_ADD_AID = 0x%0X;", __FUNCTION__, mAddAid);
+    ALOGD("%s: NXP_ENABLE_ADD_AID = 0x%0lX;", __FUNCTION__, mAddAid);
     ALOGD("%s: NXP_ESE_WIRED_PRT_MASK = 0x%0X;", __FUNCTION__, gEseVirtualWiredProtectMask);
     ALOGD("%s: NXP_UICC_WIRED_PRT_MASK = 0x%0X;", __FUNCTION__, gUICCVirtualWiredProtectMask);
     ALOGD("%s: NXP_FWD_FUNCTIONALITY_ENABLE = 0x%0X;", __FUNCTION__, mFwdFuntnEnable);
@@ -694,11 +690,11 @@ void RoutingManager::checkProtoSeID(void)
 
     if (GetNxpNumValue(NAME_CHECK_DEFAULT_PROTO_SE_ID, &check_default_proto_se_id_req, sizeof(check_default_proto_se_id_req)))
     {
-        ALOGD("%s : CHECK_DEFAULT_PROTO_SE_ID - 0x%2X ",fn,check_default_proto_se_id_req);
+        ALOGD("%s : CHECK_DEFAULT_PROTO_SE_ID - 0x%2lX ",fn,check_default_proto_se_id_req);
     }
     else
     {
-        ALOGE("%s : CHECK_DEFAULT_PROTO_SE_ID not defined. Taking default value - 0x%2X",fn,check_default_proto_se_id_req);
+        ALOGE("%s : CHECK_DEFAULT_PROTO_SE_ID not defined. Taking default value - 0x%2lX",fn,check_default_proto_se_id_req);
     }
 
     if(check_default_proto_se_id_req == 0x01)
@@ -777,7 +773,7 @@ void RoutingManager::initialiseTableEntries(void)
      mTechSupportedByEse   = SecureElement::getInstance().getSETechnology(ROUTE_LOC_ESE_ID);
      mTechSupportedByUicc1 = SecureElement::getInstance().getSETechnology(ROUTE_LOC_UICC1_ID);
      mTechSupportedByUicc2 = SecureElement::getInstance().getSETechnology(ROUTE_LOC_UICC2_ID);
-     ALOGD ("%s: exit; mTechSupportedByEse:0x%0X mTechSupportedByUicc1:0x%0X mTechSupportedByUicc2:0x%0X", fn, mTechSupportedByEse, mTechSupportedByUicc1, mTechSupportedByUicc2);
+     ALOGD ("%s: exit; mTechSupportedByEse:0x%0lX mTechSupportedByUicc1:0x%0lX mTechSupportedByUicc2:0x%0lX", fn, mTechSupportedByEse, mTechSupportedByUicc1, mTechSupportedByUicc2);
 }
 
 /* Compilation of Proto Table entries strictly based on config file parameters
@@ -786,7 +782,6 @@ void RoutingManager::initialiseTableEntries(void)
 void RoutingManager::compileProtoEntries(void)
 {
     static const char fn [] = "RoutingManager::compileProtoEntries";
-    tNFA_STATUS nfaStat     = NFA_STATUS_FAILED;
 
     ALOGD ("%s: enter", fn);
 
@@ -2557,10 +2552,10 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
 
     case NFA_EE_DISCOVER_EVT:
         {
-            UINT8 num_ee = eventData->ee_discover.num_ee;
-            tNFA_EE_DISCOVER ee_disc_info = eventData->ee_discover;
             ALOGD ("%s: NFA_EE_DISCOVER_EVT; status=0x%X; num ee=%u", __FUNCTION__,eventData->status, eventData->ee_discover.num_ee);
 #if (JCOP_WA_ENABLE == TRUE)
+            UINT8 num_ee = eventData->ee_discover.num_ee;
+            tNFA_EE_DISCOVER ee_disc_info = eventData->ee_discover;
             if(android::isNfcInitializationDone() == true)
             {
                 if(mChipId == 0x02 || mChipId == 0x04 || mChipId == 0x06)

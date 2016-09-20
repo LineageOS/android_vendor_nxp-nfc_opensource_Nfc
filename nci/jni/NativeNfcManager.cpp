@@ -1971,7 +1971,6 @@ static jboolean nfcManager_doInitialize (JNIEnv* e, jobject o)
     gActualSeCount = 0;
     UINT8 configData = 0;
     UINT8 switchToUiccSlot = 0;
-    unsigned long uicc_active_state = 0;
 #if(NXP_EXTNS == TRUE)
     rfActivation = false;
     tNFA_PMID ven_config_addr[]  = {0xA0, 0x07};
