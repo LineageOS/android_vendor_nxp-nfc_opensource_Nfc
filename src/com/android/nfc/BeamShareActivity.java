@@ -144,20 +144,22 @@ public class BeamShareActivity extends Activity {
                 // First try to get an Uri
                 Uri uri = item.getUri();
                 String plainText = null;
-                try {
-                    plainText = item.coerceToText(this).toString();
-                } catch (IllegalStateException e) {
-                    if (DBG) Log.d(TAG, e.getMessage());
-                    continue;
-                }
                 if (uri != null) {
                     if (DBG) Log.d(TAG, "Found uri in ClipData.");
                     tryUri(uri);
-                } else if (plainText != null) {
-                    if (DBG) Log.d(TAG, "Found text in ClipData.");
-                    tryText(plainText);
                 } else {
-                    if (DBG) Log.d(TAG, "Did not find any shareable data in ClipData.");
+                    try {
+                        plainText = item.coerceToText(this).toString();
+                    } catch (IllegalStateException e) {
+                        if (DBG) Log.d(TAG, e.getMessage());
+                        continue;
+                    }
+                    if (plainText != null) {
+                        if (DBG) Log.d(TAG, "Found text in ClipData.");
+                        tryText(plainText);
+                    } else {
+                        if (DBG) Log.d(TAG, "Did not find any shareable data in ClipData.");
+                    }
                 }
             }
         } else {
