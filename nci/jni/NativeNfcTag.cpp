@@ -51,7 +51,6 @@ namespace android
 {
     extern nfc_jni_native_data* getNative(JNIEnv *e, jobject o);
     extern bool nfcManager_isNfcActive();
-    extern int gGeneralTransceiveTimeout;
     extern UINT16 getrfDiscoveryDuration();
 }
 
@@ -67,6 +66,10 @@ namespace android
 {
     bool    gIsTagDeactivating = false;    // flag for nfa callback indicating we are deactivating for RF interface switch
     bool    gIsSelectingRfInterface = false; // flag for nfa callback indicating we are selecting for RF interface switch
+#if(NXP_EXTNS == TRUE)
+    bool    gIsWaiting4Deact2SleepNtf = false;
+    bool    gGotDeact2IdleNtf = false;
+#endif
     bool    fNeedToSwitchBack = false;
     void    acquireRfInterfaceMutexLock();
     void    releaseRfInterfaceMutexLock();
@@ -84,7 +87,7 @@ namespace android
 
 // Pre-defined tag type values. These must match the values in
 // framework Ndef.java for Google public NFC API.
-#define NDEF_UNKNOWN_TYPE          -1
+#define NDEF_UNKNOWN_TYPE          (-1)
 #define NDEF_TYPE1_TAG             1
 #define NDEF_TYPE2_TAG             2
 #define NDEF_TYPE3_TAG             3
@@ -923,11 +926,11 @@ TheEnd:
 void setReconnectState(bool flag)
 {
     sReconnectFlag = flag;
-    ALOGE("setReconnectState = 0x%x",sReconnectFlag );
+    ALOGD ("setReconnectState = 0x%x",sReconnectFlag );
 }
 bool getReconnectState(void)
 {
-    ALOGE("getReconnectState = 0x%x",sReconnectFlag );
+    ALOGD ("getReconnectState = 0x%x",sReconnectFlag );
     return sReconnectFlag;
 }
 /*******************************************************************************
@@ -973,7 +976,10 @@ static int reSelect (tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded)
         }
 #if(NFC_NXP_NON_STD_CARD == TRUE)
         if(!retry_cnt && (natTag.mTechLibNfcTypes[handle] != NFA_PROTOCOL_MIFARE))
+        {
+            ALOGD ("%s: Cashbee detected", __FUNCTION__);
             NfcTag::getInstance ().mCashbeeDetected = true;
+        }
 #endif
         {
             SyncEventGuard g (sReconnectEvent);
@@ -990,7 +996,7 @@ static int reSelect (tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded)
                 setReconnectState(true);
                 /* send deactivate to Idle command */
                 ALOGD ("%s: deactivate to Idle", __FUNCTION__);
-                if (NFA_STATUS_OK != (status = NFA_StopRfDiscovery ())) //deactivate to sleep state
+                if (NFA_STATUS_OK != (status = NFA_StopRfDiscovery ())) //deactivate to idle state
                 {
                     ALOGE ("%s: deactivate failed, status = %d", __FUNCTION__, status);
                     break;
@@ -1004,18 +1010,36 @@ static int reSelect (tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded)
                     ALOGE ("%s: deactivate failed, status = %d", __FUNCTION__, status);
                     break;
                 }
+#if(NXP_EXTNS == TRUE)
+                else
+                {
+                    gIsWaiting4Deact2SleepNtf = true;
+                }
+#endif
             }
             if (sReconnectEvent.wait (1000) == false) //if timeout occurred
             {
                 ALOGE ("%s: timeout waiting for deactivate", __FUNCTION__);
             }
         }
-
         /* if (!sGotDeactivate)
         {
             rVal = STATUS_CODE_TARGET_LOST;
             break;
-         }*/
+        }*/
+#if(NXP_EXTNS == TRUE)
+        if(gIsWaiting4Deact2SleepNtf)
+        {
+            if (gGotDeact2IdleNtf)
+            {
+                ALOGE ("%s: wrong deactivate ntf; break", __FUNCTION__);
+                gIsWaiting4Deact2SleepNtf = false;
+                gGotDeact2IdleNtf = false;
+                rVal = STATUS_CODE_TARGET_LOST;
+                break;
+            }
+        }
+#endif
         if(NfcTag::getInstance().getActivationState() == NfcTag::Idle)
         {
             ALOGD("%s:tag is in idle", __FUNCTION__);
@@ -1375,7 +1399,6 @@ static jboolean nativeNfcTag_doDisconnect (JNIEnv*, jobject)
     tNFA_STATUS nfaStat = NFA_STATUS_OK;
 
     NfcTag::getInstance().resetAllTransceiveTimeouts ();
-    gGeneralTransceiveTimeout = DEFAULT_GENERAL_TRANS_TIMEOUT;
 #if(NXP_EXTNS == TRUE && NFC_NXP_NON_STD_CARD == TRUE)
     if(sNonNciCard_t.Changan_Card == true || sNonNciCard_t.chinaTransp_Card == true)
     {
@@ -1549,7 +1572,7 @@ static jbyteArray nativeNfcTag_doTransceive (JNIEnv* e, jobject o, jbyteArray da
                 ALOGE ("%s: fail send; error=%d", __FUNCTION__, status);
                 break;
             }
-            waitOk = sTransceiveEvent.wait (gGeneralTransceiveTimeout);
+            waitOk = sTransceiveEvent.wait (timeout);
         }
 
         if (waitOk == false || sTransceiveRfTimeout) //if timeout occurred
@@ -2114,6 +2137,8 @@ static jboolean nativeNfcTag_doPresenceCheck (JNIEnv*, jobject)
         UINT8 *pbuf = NULL;
         UINT8 bufLen = 0x00;
         bool waitOk = false;
+        int timeout = NfcTag::getInstance ().getTransceiveTimeout (sCurrentConnectedTargetType);
+        ALOGD ("%s: enter; timeout = %d", __FUNCTION__, timeout);
 
         SyncEventGuard g (sTransceiveEvent);
         sTransceiveRfTimeout = false;
@@ -2128,7 +2153,7 @@ static jboolean nativeNfcTag_doPresenceCheck (JNIEnv*, jobject)
             ALOGE ("%s: fail send; error=%d", __FUNCTION__, status);
         }
         else
-            waitOk = sTransceiveEvent.wait (gGeneralTransceiveTimeout);
+            waitOk = sTransceiveEvent.wait (timeout);
 
         if (waitOk == false || sTransceiveRfTimeout) //if timeout occurred
         {
