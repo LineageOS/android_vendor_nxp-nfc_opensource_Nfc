@@ -136,6 +136,13 @@ public class ConfirmConnectToWifiNetworkActivity extends Activity
                         doConnect(
                                 (WifiManager) ConfirmConnectToWifiNetworkActivity.this
                                         .getSystemService(Context.WIFI_SERVICE));
+                        /**
+                          * If Wi-Fi is not enabled before reading Tag then
+                          * we will finish activity here, for other case
+                          * when Wi-Fi is already enabled activity will be
+                          * finished in onDismiss()
+                          */
+                        finish();
                     }
                 }
             }
