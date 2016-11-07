@@ -144,6 +144,13 @@ int updateNxpConfigTimestamp ();
 #define MAX_DATA_CONFIG_PATH_LEN 64
 
 /**
+ *  @brief Defines the NQ chip type.
+ */
+
+#define NQ210 "0x48"
+#define NQ220 "0x58"
+
+/**
  *  @brief Defines whether debugging is enabled or disabled.
  */
 
