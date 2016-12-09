@@ -2623,6 +2623,11 @@ void SecureElement::nfaHciCallback (tNFA_HCI_EVT event, tNFA_HCI_EVT_DATA* event
                         sSecElem.notifyTransactionListenersOfAid (&eventData->rcvd_evt.p_evt_buf[2],aidlen,data,datalen,evtSrc);
                     }
                 }
+                else if(datalen == 0)
+                {
+                    ALOGE("EVT_TRANSACTION without data in param field");
+                    sSecElem.notifyTransactionListenersOfAid (&eventData->rcvd_evt.p_evt_buf[2],aidlen,data,datalen,evtSrc);
+                }
                 else
                 {
                     ALOGE("Event data TLV length encoding Unsupported!");
