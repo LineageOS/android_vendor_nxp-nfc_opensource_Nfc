@@ -280,8 +280,6 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
     int config_id = QRD_TYPE_DEFAULT;
     char target_type[MAX_SOC_INFO_NAME_LEN] = {'\0'};
     char soc_info[MAX_SOC_INFO_NAME_LEN] = {'\0'};
-    char nq_chipid[PROPERTY_VALUE_MAX] = {0};
-    char nq_fw_ver[PROPERTY_VALUE_MAX] = {0};
     string strPath;
     int rc = 0;
     int idx = 0;
@@ -298,18 +296,6 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
         ALOGE("get_soc_info(HW_PLATFORM) fail!\n");
         return DEFAULT_CONFIG;
     }
-
-    rc = __system_property_get("sys.nfc.nq.chipid", nq_chipid);
-    if (rc <= 0)
-        ALOGE("get sys.nfc.nq.chipid fail, rc = %d\n", rc);
-    else
-        ALOGD("sys.nfc.nq.chipid = %s\n", nq_chipid);
-
-    rc = __system_property_get("sys.nfc.nq.fwver", nq_fw_ver);
-    if (rc <= 0)
-        ALOGE("get sys.nfc.nq.fwver fail, rc = %d\n", rc);
-    else
-        ALOGD("sys.nfc.nq.fwver = %s\n", nq_fw_ver);
 
     // Converting the HW_PLATFORM detail that is read from target to lowercase
     for (int i=0;target_type[i];i++)
@@ -350,14 +336,8 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
             break;
         case TARGET_MSM8998:
         case TARGET_MSM8997:
-            if ((!strncmp(nq_chipid, NQ220, PROPERTY_VALUE_MAX)) || (!strncmp(nq_chipid, NQ210, PROPERTY_VALUE_MAX))) {
-		// NQ210 or NQ220
-		config_id = QRD_TYPE_DEFAULT;
-		strlcpy(config_file, config_name_qrd, MAX_DATA_CONFIG_PATH_LEN);
-	    } else {
-		config_id = QRD_TYPE_2;
-		strlcpy(config_file, config_name_qrd2, MAX_DATA_CONFIG_PATH_LEN);
-	    }
+            config_id = QRD_TYPE_2;
+            strlcpy(config_file, config_name_qrd2, MAX_DATA_CONFIG_PATH_LEN);
             break;
         default:
             config_id = QRD_TYPE_DEFAULT;
@@ -374,14 +354,8 @@ int CNxpNfcConfig::getconfiguration_id(char *config_file)
             break;
         case TARGET_MSM8998:
         case TARGET_MSM8997:
-            if ((!strncmp(nq_chipid, NQ220, PROPERTY_VALUE_MAX)) || (!strncmp(nq_chipid, NQ210, PROPERTY_VALUE_MAX))) {
-		// NQ210 or NQ220
-                config_id = MTP_TYPE_DEFAULT;
-                strlcpy(config_file, config_name_mtp, MAX_DATA_CONFIG_PATH_LEN);
-	    } else {
-                config_id = MTP_TYPE_1;
-                strlcpy(config_file, config_name_mtp1, MAX_DATA_CONFIG_PATH_LEN);
-	    }
+            config_id = MTP_TYPE_1;
+            strlcpy(config_file, config_name_mtp1, MAX_DATA_CONFIG_PATH_LEN);
             break;
         default:
             config_id = MTP_TYPE_DEFAULT;
