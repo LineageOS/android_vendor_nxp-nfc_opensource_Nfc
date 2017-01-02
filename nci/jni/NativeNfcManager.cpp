@@ -5286,7 +5286,7 @@ static jbyteArray nfcManager_getFwFileName(JNIEnv* e, jobject o)
     int fileLen = 0;
     jbyteArray jbuff = NULL;
 
-    if(GetNxpStrValue(NAME_NXP_FW_NAME, (char*)fwFileName, sizeof(fwFileName)) == TRUE)
+    if(GetNxpStrValue(NAME_NXP_FW_NAME, (char*)fwFileName, sizeof(fwFileName)))
     {
         ALOGD ("%s: FW_NAME read success = %s", __FUNCTION__, fwFileName);
         fileLen = strlen(fwFileName);
