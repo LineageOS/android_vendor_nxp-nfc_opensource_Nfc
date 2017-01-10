@@ -5001,11 +5001,16 @@ public class NfcService implements DeviceHostListener {
                             evtSrc = NxpConstants.SMART_MX_ID;
                             gsmaSrc = "ESE";
                         }
+                        if (dataSrcInfo.first != null) {
+                        String evt_data = toHexString(dataSrcInfo.first, 0, dataSrcInfo.first.length);
+                        if (DBG) Log.d(TAG, "Data is : "+evt_data);
+                        }
                         /* Send broadcast */
                         Intent aidIntent = new Intent();
                         aidIntent.setAction(ACTION_AID_SELECTED);
                         aidIntent.putExtra(EXTRA_AID, transactionInfo.first);
                         aidIntent.putExtra("com.android.nfc_extras.extra.SE_NAME", evtSrc);
+                        aidIntent.putExtra("com.android.nfc_extras.extra.DATA",dataSrcInfo.first);
                         if (DBG) Log.d(TAG, "Broadcasting " + ACTION_AID_SELECTED);
                         sendNfcEeAccessProtectedBroadcast(aidIntent);
                         mIsSentUnicastReception = false;
