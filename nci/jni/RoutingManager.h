@@ -55,6 +55,7 @@ extern "C"
 #define TYPE_LENGTH_SIZE                0x02
 
 #define MAX_GET_ROUTING_BUFFER_SIZE     740
+#define EE_HCI_DEFAULT_HANDLE           0x401
 #endif
 
 //FelicaOnHost
@@ -71,20 +72,6 @@ typedef struct{
 
    // Mutex mMutex; /*add if it is required */
 }NfcID2_info_t;
-
-typedef struct{
-    NfcID2_info_t NfcID2_info[4];
-    IntervalTimer nfcID2_req_timer;
-    UINT8 NfcID2_ReqCount;
-    Mutex mMutex;
-}NfcID2_add_req_info_t;
-
-typedef struct{
-    NfcID2_info_t NfcID2_info[4];
-    IntervalTimer nfcID2_rmv_req_timer;
-    UINT8 NfcID2_Rmv_ReqCount;
-    Mutex mMutex;
-}NfcID2_rmv_req_info_t;
 
 typedef struct
 {
@@ -132,8 +119,6 @@ public:
 
     static RoutingManager& getInstance ();
     bool initialize(nfc_jni_native_data* native);
-    void enableRoutingToHost();
-    void disableRoutingToHost();
 #if(NXP_EXTNS == TRUE)
     void setRouting(bool);
     void getRouting();
@@ -144,6 +129,7 @@ public:
     void setDefaultTechRouting (int seId, int tech_switchon,int tech_switchoff);
     void setDefaultProtoRouting (int seId, int proto_switchon,int proto_switchoff);
     void processGetRoutingRsp(tNFA_DM_CBACK_DATA* eventData, UINT8* sRoutingBuff);
+    void nfaEEConnect();
     bool setRoutingEntry(int type, int value, int route, int power);
     bool clearRoutingEntry(int type);
     bool setDefaultRoute(const UINT8 defaultRoute, const UINT8 protoRoute, const UINT8 techRoute);
@@ -152,7 +138,7 @@ public:
     bool addAidRouting(const UINT8* aid, UINT8 aidLen, int route, int power, bool isprefix);
     int  addNfcid2Routing(UINT8* nfcid2, UINT8 aidLen,const UINT8* syscode,
     int  syscodelen,const UINT8* optparam, int optparamlen);
-#if (JCOP_WA_ENABLE == TRUE)
+#if (NXP_NFCEE_REMOVED_NTF_RECOVERY == TRUE)
     void handleSERemovedNtf();
     bool is_ee_recovery_ongoing();
 #endif
@@ -194,6 +180,8 @@ private:
     void notifyDeactivated (UINT8 technology);
     void notifyLmrtFull();
     void printMemberData(void);
+    void extractRouteLocationAndPowerStates(const UINT8 defaultRoute, const UINT8 protoRoute, const UINT8 techRoute);
+    UINT16 getUiccRouteLocId(const UINT8 route);
     void initialiseTableEntries(void);
     void compileProtoEntries(void);
     void compileTechEntries(void);
