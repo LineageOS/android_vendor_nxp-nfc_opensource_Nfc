@@ -44,9 +44,7 @@ uint8_t nfcee_swp_discovery_status;
 extern INT32 gActualSeCount;
 extern UINT16 sCurrentSelectedUICCSlot;
 static void LmrtRspTimerCb(union sigval);
-#if(NFC_NXP_STAT_DUAL_UICC_WO_EXT_SWITCH == TRUE)
 static jint getUiccRoute(jint uicc_slot);
-#endif
 int gUICCVirtualWiredProtectMask = 0;
 int gEseVirtualWiredProtectMask = 0;
 int gWiredModeRfFieldEnable = 0;
@@ -3043,7 +3041,6 @@ static void LmrtRspTimerCb(union sigval)
     RoutingManager::getInstance().mEeUpdateEvent.notifyOne();
 }
 
-#if(NFC_NXP_STAT_DUAL_UICC_WO_EXT_SWITCH == TRUE)
 /*******************************************************************************
  **
  ** Function:        getUiccRoute
@@ -3069,6 +3066,5 @@ static jint getUiccRoute(jint uicc_slot)
         return 0xFF;
     }
 }
-#endif
 #endif
 
