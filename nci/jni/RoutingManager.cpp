@@ -2139,7 +2139,7 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
 
     SecureElement& se = SecureElement::getInstance();
     RoutingManager& routingManager = RoutingManager::getInstance();
-    tNFA_EE_DISCOVER_REQ info = eventData->discover_req;
+    tNFA_EE_DISCOVER_REQ info;
 
     switch (event)
     {
@@ -2308,6 +2308,7 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
         break;
 
     case NFA_EE_DISCOVER_REQ_EVT:
+        info = eventData->discover_req;
         ALOGD ("%s: NFA_EE_DISCOVER_REQ_EVT; status=0x%X; num ee=%u", __FUNCTION__,
                 eventData->discover_req.status, eventData->discover_req.num_ee);
 #if((NFC_NXP_ESE == TRUE) && (NXP_EXTNS == TRUE) && (NXP_ESE_ETSI_READER_ENABLE == TRUE))
