@@ -59,6 +59,8 @@ public class NxpNfcController {
     final NxpNfcControllerInterface mNxpNfcControllerInterface;
     final RegisteredNxpServicesCache mServiceCache;
     private RegisteredAidCache mRegisteredAidCache;
+    private CardEmulationManager mCardEmulationManager;
+    private boolean mGsmaCommitOffhostService = false;
     static final String TAG = "NxpNfcControllerService";
     boolean DBG = true;
 
@@ -72,6 +74,7 @@ public class NxpNfcController {
 
     public NxpNfcController(Context context, CardEmulationManager cardEmulationManager) {
         mContext = context;
+        mCardEmulationManager = cardEmulationManager;
         mServiceCache = cardEmulationManager.getRegisteredNxpServicesCache();
         mRegisteredAidCache = cardEmulationManager.getRegisteredAidCache();
         mNxpNfcControllerInterface = new NxpNfcControllerInterface();
@@ -145,6 +148,10 @@ public class NxpNfcController {
         Log.d(TAG, "setResultForX509Certificates() End");
     }
 
+    public boolean isGsmaCommitOffhostService() {
+        return mGsmaCommitOffhostService;
+    }
+
     static byte[] hexStringToBytes(String s) {
         if (s == null || s.length() == 0) return null;
         int len = s.length();
@@ -173,8 +180,8 @@ public class NxpNfcController {
 
     private ComponentName getPackageListUnicastMode (Intent intent) {
         unicastPkg = null;
-        ArrayList<NQApduServiceInfo> regApduServices = new ArrayList<NQApduServiceInfo>(mServiceCache.getInstalledStaticServices().values());
-        if(DBG) Log.d(TAG, "getPackageListUnicastMode(): regApduServices.size() " + regApduServices.size());
+        List<NQApduServiceInfo> regServices = new ArrayList<NQApduServiceInfo>(mCardEmulationManager.getAllServices());
+        if(DBG) Log.d(TAG, "getPackageListUnicastMode(): regServices.size() " + regServices.size());
 
         PackageManager pm = mContext.getPackageManager();
         /*
@@ -202,7 +209,7 @@ public class NxpNfcController {
         long minInstallTime;
         ResolveInfo resolveInfoService = null;
 
-        for(NQApduServiceInfo service : regApduServices) {
+        for(NQApduServiceInfo service : regServices) {
             packageName = service.getComponent().getPackageName();
             for(ResolveInfo resInfo : intentReceivers) {
                 resolveInfoService = null;
@@ -217,11 +224,11 @@ public class NxpNfcController {
                 continue;
             }
             int priority = resolveInfoService.priority;
-            if(pm.checkPermission(NxpConstants.PERMISSIONS_TRANSACTION_EVENT, packageName) ==
-                    PackageManager.PERMISSION_GRANTED)
+            if((pm.checkPermission(NxpConstants.PERMISSIONS_TRANSACTION_EVENT , packageName) == PackageManager.PERMISSION_GRANTED) &&
+                    (pm.checkPermission(NxpConstants.PERMISSIONS_NFC , packageName) == PackageManager.PERMISSION_GRANTED))
             {
-                // FIXME: Access rules for selected AID need to be checked here
-                if(checkCertificatesFromUICC(packageName, NxpConstants.UICC_ID) == true)
+                if((checkCertificatesFromUICC(packageName, "SIM") == true) ||
+                    (checkCertificatesFromUICC(packageName, "SIM1") == true))
                 {
                     if(priority == highestPriority) {
                         apduResolvedServices.add(packageName);
@@ -355,13 +362,35 @@ public class NxpNfcController {
            }*/
 
            Log.d(TAG, "Commiting :  ");
-           return mServiceCache.registerApduService(userId, Binder.getCallingUid(), packageName, serviceName, service);
+           mGsmaCommitOffhostService = true;
+           mServiceCache.registerApduService(userId, Binder.getCallingUid(), packageName, serviceName, service);
+           /*After commitRouting is done, status shall be updated by AidRoutingManager.
+            * if there is any overflow of RoutingTable, status shall be false & the same is returned to caller*/
+           mGsmaCommitOffhostService = false;
+           boolean isCommitSuccess = NfcService.getInstance().getLastCommitRoutingStatus();
+           Log.d(TAG, "CommitStatus : "+isCommitSuccess);
+           return isCommitSuccess;
         }
 
         @Override
         public boolean enableMultiEvt_NxptransactionReception(String packageName, String seName) {
-            boolean result = false;
-            if(checkCertificatesFromUICC(packageName, seName) == true) {
+            boolean result = false,resolveStat = false;
+            PackageManager pm = mContext.getPackageManager();
+            List<ResolveInfo> intentServices = pm.queryIntentActivities(
+                    new Intent(NxpConstants.ACTION_MULTI_EVT_TRANSACTION),
+                    PackageManager.GET_INTENT_FILTERS| PackageManager.GET_RESOLVED_FILTER);
+
+            for(ResolveInfo resInfo : intentServices){
+                Log.e(TAG, " Registered Service in resolved cache"+resInfo.activityInfo.packageName);
+                if(resInfo.activityInfo.packageName.equals(packageName)) {
+                    resolveStat = true;
+                    break;
+                }
+            }
+
+            if((resolveStat) && (pm.checkPermission(NxpConstants.PERMISSIONS_TRANSACTION_EVENT , packageName) == PackageManager.PERMISSION_GRANTED) &&
+                    (pm.checkPermission(NxpConstants.PERMISSIONS_NFC , packageName) == PackageManager.PERMISSION_GRANTED) &&
+                    checkCertificatesFromUICC(packageName, seName) == true) {
                 mEnabledMultiEvts.add(packageName);
                 result = true;
             } else {

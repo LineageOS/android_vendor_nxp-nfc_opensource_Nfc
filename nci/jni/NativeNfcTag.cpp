@@ -1011,7 +1011,7 @@ static int reSelect (tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded)
                     break;
                 }
 #if(NXP_EXTNS == TRUE)
-                else
+                else if(NfcTag::getInstance().mIsMultiProtocolTag)
                 {
                     gIsWaiting4Deact2SleepNtf = true;
                 }
@@ -1437,7 +1437,7 @@ TheEnd:
 void nativeNfcTag_doTransceiveStatus (tNFA_STATUS status, uint8_t* buf, uint32_t bufLen)
 {
     SyncEventGuard g (sTransceiveEvent);
-    ALOGD ("%s: data len=%d", __FUNCTION__, bufLen);
+    ALOGD ("%s: data len=%d, cur connection handle =%d", __FUNCTION__, bufLen, sCurrentConnectedHandle);
 
     if (sCurrentConnectedTargetProtocol == NFA_PROTOCOL_MIFARE)
     {
