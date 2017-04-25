@@ -250,10 +250,12 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
         mDefaultTechFSeID = ( (num == 0x01) ? ROUTE_LOC_ESE_ID : ((num == 0x02) ? ROUTE_LOC_UICC1_ID : ROUTE_LOC_UICC2_ID) );
 #endif
     }
+#if(NFC_NXP_STAT_DUAL_UICC_WO_EXT_SWITCH == TRUE)
     else
     {
         mDefaultTechFSeID = getUiccRoute(sCurrentSelectedUICCSlot);
     }
+#endif
 
     if (GetNxpNumValue (NAME_DEFAULT_FELICA_CLT_PWR_STATE, (void*)&num, sizeof(num)))
         mDefaultTechFPowerstate = num;
@@ -1174,10 +1176,12 @@ void RoutingManager::compileTechEntries(void)
         mDefaultTechFSeID = ( (num == 0x01) ? ROUTE_LOC_ESE_ID : ((num == 0x02) ? ROUTE_LOC_UICC1_ID : ROUTE_LOC_UICC2_ID) );
 #endif
     }
+#if(NFC_NXP_STAT_DUAL_UICC_WO_EXT_SWITCH == TRUE)
     else
     {
         mDefaultTechFSeID = getUiccRoute(sCurrentSelectedUICCSlot);
     }
+#endif
 #else
     mDefaultTechFSeID = ROUTE_LOC_UICC1_ID;
 #endif
