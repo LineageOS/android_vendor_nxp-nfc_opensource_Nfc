@@ -22,6 +22,7 @@
 #include "OverrideLog.h"
 #include <ScopedPrimitiveArray.h>
 #include "DwpChannel.h"
+#include "SecureElement.h"
 
 extern "C"
 {
@@ -38,7 +39,8 @@ extern SyncEvent            sNfaVSCResponseEvent;
 extern void startRfDiscovery (bool isStart);
 extern bool isDiscoveryStarted();
 extern void nfaVSCCallback(UINT8 event, UINT16 param_len, UINT8 *p_param);
-extern void set_transcation_stat(bool result);
+extern bool update_transaction_stat(const char * req_handle, transaction_state_t req_state);
+
 }
 
 namespace android
@@ -144,8 +146,11 @@ int nfcManager_doAppletLoadApplet(JNIEnv* e, jobject o, jstring name, jbyteArray
 
     sRfEnabled = isDiscoveryStarted();
     wStatus = status = NFA_STATUS_FAILED;
-
-    set_transcation_stat(true);
+    if(!update_transaction_stat("AppletLoadApplet",SET_TRANSACTION_STATE))
+    {
+        ALOGE("%s: Transaction in progress. Returning", __FUNCTION__);
+        return wStatus;
+    }
     if (sRfEnabled) {
         // Stop RF Discovery if we were polling
         startRfDiscovery (false);
@@ -173,7 +178,10 @@ int nfcManager_doAppletLoadApplet(JNIEnv* e, jobject o, jstring name, jbyteArray
     if(dwpChannelForceClose == false)
         startRfDiscovery (true);
 
-    set_transcation_stat(false);
+    if(!update_transaction_stat("AppletLoadApplet",RESET_TRANSACTION_STATE))
+    {
+        ALOGE("%s: Can not reset transaction state", __FUNCTION__);
+    }
 
     ALOGD ("%s: exit; status =0x%X", __FUNCTION__,wStatus);
 #else
@@ -218,7 +226,11 @@ jbyteArray nfcManager_lsExecuteScript(JNIEnv* e, jobject o, jstring name, jstrin
     sRfEnabled = isDiscoveryStarted();
     wStatus = status = NFA_STATUS_FAILED;
 
-    set_transcation_stat(true);
+    if(!update_transaction_stat("lsExecuteScript",SET_TRANSACTION_STATE))
+    {
+        ALOGE("%s: update_transaction_state falied. Returning", __FUNCTION__);
+        return result;
+    }
     if (sRfEnabled) {
         // Stop RF Discovery if we were polling
         startRfDiscovery (false);
@@ -277,7 +289,10 @@ jbyteArray nfcManager_lsExecuteScript(JNIEnv* e, jobject o, jstring name, jstrin
     if(dwpChannelForceClose == false)
         startRfDiscovery (true);
 
-    set_transcation_stat(false);
+    if(!update_transaction_stat("lsExecuteScript",RESET_TRANSACTION_STATE))
+    {
+        ALOGE("%s: Can not reset transaction state", __FUNCTION__);
+    }
 
     ALOGD ("%s: exit; status =0x%X", __FUNCTION__,wStatus);
 #else
@@ -371,9 +386,13 @@ jbyteArray nfcManager_lsGetVersion(JNIEnv* e, jobject)
     bool stat = false;
     const INT32 recvBufferMaxSize = 4;
     UINT8 recvBuffer [recvBufferMaxSize];
-
+    jbyteArray result = e->NewByteArray(0);
     sRfEnabled = isDiscoveryStarted();
-    set_transcation_stat(true);
+    if(!update_transaction_stat("lsGetVersion",SET_TRANSACTION_STATE))
+    {
+        ALOGE("%s: update_transaction_state falied. Returning", __FUNCTION__);
+         return result;
+    }
     if (sRfEnabled) {
         // Stop RF Discovery if we were polling
         startRfDiscovery (false);
@@ -391,7 +410,7 @@ jbyteArray nfcManager_lsGetVersion(JNIEnv* e, jobject)
     }
 
     //copy results back to java
-    jbyteArray result = e->NewByteArray(recvBufferMaxSize);
+    result = e->NewByteArray(recvBufferMaxSize);
     if (result != NULL)
     {
         e->SetByteArrayRegion(result, 0, recvBufferMaxSize, (jbyte *) recvBuffer);
@@ -401,7 +420,10 @@ jbyteArray nfcManager_lsGetVersion(JNIEnv* e, jobject)
     if(dwpChannelForceClose == false)
         startRfDiscovery (true);
 
-    set_transcation_stat(false);
+    if(!update_transaction_stat("lsGetVersion",RESET_TRANSACTION_STATE))
+    {
+        ALOGE("%s: Can not reset transaction state", __FUNCTION__);
+    }
 
     ALOGD("%s: exit: recv len=%ld", __FUNCTION__, recvBufferMaxSize);
 #else

@@ -294,7 +294,6 @@ DwpChannel& DwpChannel::getInstance()
 *******************************************************************************/
 void DwpChannel::finalize()
 {
-    static const char fn [] = "DwpChannel::finalize";
     dwpChannelForceClose = false;
 }
 
@@ -309,7 +308,6 @@ void DwpChannel::finalize()
 *******************************************************************************/
 void DwpChannel::Initialize()
 {
-    static const char fn [] = "DwpChannel::Initialize";
     dwpChannelForceClose = false;
 }
 /*******************************************************************************
@@ -384,11 +382,13 @@ void doeSE_JcopDownLoadReset(void)
     /*tNFA_STATUS nfaStat = NFA_STATUS_FAILED;*/
     SecureElement &se = SecureElement::getInstance();
     RoutingManager &rm = RoutingManager::getInstance();
+#if ((NXP_ESE_RESET_METHOD == TRUE) && (NXP_ESE_POWER_MODE == TRUE))
+    unsigned long int num = 0;
+#endif
     ALOGD("%s: enter:", fn);
 
     rm.mResetHandlerMutex.lock();
 #if ((NXP_ESE_RESET_METHOD == TRUE) && (NXP_ESE_POWER_MODE == TRUE))
-    unsigned long int num = 0;
     if (GetNxpNumValue (NAME_NXP_ESE_POWER_DH_CONTROL, (void*)&num, sizeof(num)) == true)
     {
         if(num ==1)
