@@ -39,9 +39,10 @@ extern "C"{
 
 extern INT32 gSeDiscoverycount;
 extern SyncEvent gNfceeDiscCbEvent;
-uint8_t swp_getconfig_status;
+
 uint8_t nfcee_swp_discovery_status;
 extern INT32 gActualSeCount;
+extern INT32 gdisc_timeout;
 extern UINT16 sCurrentSelectedUICCSlot;
 static void LmrtRspTimerCb(union sigval);
 #if(NFC_NXP_STAT_DUAL_UICC_WO_EXT_SWITCH == TRUE)
@@ -63,9 +64,7 @@ const JNINativeMethod RoutingManager::sMethods [] =
 
 static UINT16 rdr_req_handling_timeout = 50;
 
-#if((NXP_EXTNS == TRUE) && (NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE))
-static int mSetDefaulRouteParams;
-#endif
+
 #if((NFC_NXP_ESE == TRUE) && (NXP_EXTNS == TRUE) && (NXP_ESE_ETSI_READER_ENABLE == TRUE))
 Rdr_req_ntf_info_t swp_rdr_req_ntf_info;
 static IntervalTimer swp_rd_req_timer;
@@ -76,10 +75,10 @@ UINT16 lastcehandle = 0;
 namespace android
 {
     extern void checkforTranscation(UINT8 connEvent, void* eventData );
-    extern bool nfcManager_sendEmptyDataMsg();
 #if (NXP_EXTNS == TRUE)
-#if((NFC_NXP_ESE == TRUE) && (NXP_NFCC_ESE_UICC_CONCURRENT_ACCESS_PROTECTION == TRUE))
-    extern bool is_wired_mode_open;
+#if (NXP_NFCC_EMPTY_DATA_PACKET == TRUE)
+    extern bool nfcManager_sendEmptyDataMsg();
+    extern bool gIsEmptyRspSentByHceFApk;
 #endif
     extern UINT16 sRoutingBuffLen;
     extern bool  rfActivation;
@@ -94,6 +93,10 @@ namespace android
 #endif
 #endif
 }
+
+#if (NXP_EXTNS == TRUE)
+static RouteInfo_t gRouteInfo;
+#endif
 
 RoutingManager::RoutingManager ()
 : mNativeData(NULL),
@@ -188,6 +191,7 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
 
     ALOGD ("%s: enter", fn);
 #if (NXP_EXTNS == TRUE)
+    memset(&gRouteInfo, 0x00, sizeof(RouteInfo_t));
     nfcee_swp_discovery_status = SWP_DEFAULT;
     if ((GetNumValue(NAME_HOST_LISTEN_TECH_MASK, &tech, sizeof(tech))))
         mHostListnTechMask = tech;
@@ -246,10 +250,12 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
         mDefaultTechFSeID = ( (num == 0x01) ? ROUTE_LOC_ESE_ID : ((num == 0x02) ? ROUTE_LOC_UICC1_ID : ROUTE_LOC_UICC2_ID) );
 #endif
     }
+#if(NFC_NXP_STAT_DUAL_UICC_WO_EXT_SWITCH == TRUE)
     else
     {
         mDefaultTechFSeID = getUiccRoute(sCurrentSelectedUICCSlot);
     }
+#endif
 
     if (GetNxpNumValue (NAME_DEFAULT_FELICA_CLT_PWR_STATE, (void*)&num, sizeof(num)))
         mDefaultTechFPowerstate = num;
@@ -311,8 +317,8 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
     else
     {
         //gSeDiscoverycount = ActualNumEe;
-        SecureElement::getInstance().updateNfceeDiscoverInfo(ActualNumEe, (tNFA_EE_INFO*)mEeInfo);
-        ALOGD ("%s:gSeDiscoverycount=0x%X;", __FUNCTION__, gSeDiscoverycount);
+        SecureElement::getInstance().updateNfceeDiscoverInfo();
+        ALOGD ("%s:gSeDiscoverycount=0x%lX;", __FUNCTION__, gSeDiscoverycount);
 #if 0
         if(mChipId == 0x02 || mChipId == 0x04)
         {
@@ -345,6 +351,78 @@ bool RoutingManager::initialize (nfc_jni_native_data* native)
     ALOGD ("%s: exit", fn);
     return true;
 }
+#if(NXP_EXTNS == TRUE)
+void RoutingManager::registerProtoRouteEntry(tNFA_HANDLE     ee_handle,
+                                         tNFA_PROTOCOL_MASK  protocols_switch_on,
+                                         tNFA_PROTOCOL_MASK  protocols_switch_off,
+                                         tNFA_PROTOCOL_MASK  protocols_battery_off,
+                                         tNFA_PROTOCOL_MASK  protocols_screen_lock,
+                                         tNFA_PROTOCOL_MASK  protocols_screen_off
+                                         )
+{
+    static const char fn [] = "RoutingManager::registerProtoRouteEntry";
+    bool new_entry = true;
+    UINT8 i = 0;
+    tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
+
+    if(gRouteInfo.num_entries == 0)
+    {
+        ALOGD ("%s: enter, first entry :%x", fn, ee_handle);
+        gRouteInfo.protoInfo[0].ee_handle = ee_handle;
+        gRouteInfo.protoInfo[0].protocols_switch_on = protocols_switch_on;
+        gRouteInfo.protoInfo[0].protocols_switch_off = protocols_switch_off;
+        gRouteInfo.protoInfo[0].protocols_battery_off = protocols_battery_off;
+        gRouteInfo.protoInfo[0].protocols_screen_lock = protocols_screen_lock;
+        gRouteInfo.protoInfo[0].protocols_screen_off = protocols_screen_off;
+        gRouteInfo.num_entries = 1;
+    }
+    else
+    {
+        for (i = 0;i < gRouteInfo.num_entries; i++)
+        {
+            if(gRouteInfo.protoInfo[i].ee_handle == ee_handle)
+            {
+                ALOGD ("%s: enter, proto handle match found :%x", fn, ee_handle);
+                gRouteInfo.protoInfo[i].protocols_switch_on |= protocols_switch_on;
+                gRouteInfo.protoInfo[i].protocols_switch_off |= protocols_switch_off;
+                gRouteInfo.protoInfo[i].protocols_battery_off |= protocols_battery_off;
+                gRouteInfo.protoInfo[i].protocols_screen_lock |= protocols_screen_lock;
+                gRouteInfo.protoInfo[i].protocols_screen_off |= protocols_screen_off;
+                new_entry = false;
+                break;
+            }
+        }
+        if(new_entry)
+        {
+            ALOGD ("%s: enter,new proto handle entry :%x", fn, ee_handle);
+            i = gRouteInfo.num_entries;
+            gRouteInfo.protoInfo[i].ee_handle = ee_handle;
+            gRouteInfo.protoInfo[i].protocols_switch_on = protocols_switch_on;
+            gRouteInfo.protoInfo[i].protocols_switch_off = protocols_switch_off;
+            gRouteInfo.protoInfo[i].protocols_battery_off = protocols_battery_off;
+            gRouteInfo.protoInfo[i].protocols_screen_lock = protocols_screen_lock;
+            gRouteInfo.protoInfo[i].protocols_screen_off = protocols_screen_off;
+            gRouteInfo.num_entries++;
+        }
+    }
+    for (i = 0;i < gRouteInfo.num_entries; i++)
+    {
+        nfaStat = NFA_EeSetDefaultProtoRouting (gRouteInfo.protoInfo[i].ee_handle,
+                                                gRouteInfo.protoInfo[i].protocols_switch_on,
+                                                gRouteInfo.protoInfo[i].protocols_switch_off,
+                                                gRouteInfo.protoInfo[i].protocols_battery_off,
+                                                gRouteInfo.protoInfo[i].protocols_screen_lock,
+                                                gRouteInfo.protoInfo[i].protocols_screen_off);
+        if(nfaStat == NFA_STATUS_OK){
+            mRoutingEvent.wait ();
+            ALOGD ("tech routing SUCCESS");
+        }
+        else{
+            ALOGE ("Fail to set default tech routing");
+        }
+    }
+}
+#endif
 
 RoutingManager& RoutingManager::getInstance ()
 {
@@ -435,7 +513,7 @@ void RoutingManager::setRouting(bool isHCEEnabled)
     else
     {
         SecureElement::getInstance().getEeHandleList(ee_handleList, &count);
-        for ( i = 0; i < count; i++)
+        for ( ; i < count; i++)
         {
             if (defaultHandle == NFA_HANDLE_INVALID)
             {
@@ -725,13 +803,13 @@ void RoutingManager::extractRouteLocationAndPowerStates(const UINT8 defaultRoute
     static const char fn []   = "RoutingManager::extractRouteLocationAndPowerStates";
     mDefaultIso7816SeID = ((((defaultRoute & 0x60) >> 5) == 0x00) ? ROUTE_LOC_HOST_ID : ((((defaultRoute & 0x60)>>5 )== 0x01 ) ? ROUTE_LOC_ESE_ID : getUiccRouteLocId(defaultRoute)));
     mDefaultIso7816Powerstate = defaultRoute & 0x1F;
-    ALOGD ("%s:mDefaultIso7816SeID:0x%2X mDefaultIso7816Powerstate:0x%X", fn, mDefaultIso7816SeID, mDefaultIso7816Powerstate);
+    ALOGD ("%s:mDefaultIso7816SeID:0x%2lX mDefaultIso7816Powerstate:0x%lX", fn, mDefaultIso7816SeID, mDefaultIso7816Powerstate);
     mDefaultIsoDepSeID = ((((protoRoute & 0x60) >> 5) == 0x00) ? ROUTE_LOC_HOST_ID : ((((protoRoute & 0x60)>>5 )== 0x01 ) ? ROUTE_LOC_ESE_ID : getUiccRouteLocId(protoRoute)));
     mDefaultIsoDepPowerstate = protoRoute & 0x1F;
-    ALOGD ("%s:mDefaultIsoDepSeID:0x%2X mDefaultIsoDepPowerstate:0x%2X", fn, mDefaultIsoDepSeID,mDefaultIsoDepPowerstate);
+    ALOGD ("%s:mDefaultIsoDepSeID:0x%2lX mDefaultIsoDepPowerstate:0x%2lX", fn, mDefaultIsoDepSeID,mDefaultIsoDepPowerstate);
     mDefaultTechASeID = ((((techRoute & 0x60) >> 5) == 0x00) ? ROUTE_LOC_HOST_ID : ((((techRoute & 0x60)>>5 )== 0x01 ) ? ROUTE_LOC_ESE_ID : getUiccRouteLocId(techRoute)));
     mDefaultTechAPowerstate = techRoute & 0x1F;
-    ALOGD ("%s:mDefaultTechASeID:0x%2X mDefaultTechAPowerstate:0x%2X", fn, mDefaultTechASeID,mDefaultTechAPowerstate);
+    ALOGD ("%s:mDefaultTechASeID:0x%2lX mDefaultTechAPowerstate:0x%2lX", fn, mDefaultTechASeID,mDefaultTechAPowerstate);
 
 }
 /* Based on the features enabled :- NXP_NFCC_DYNAMIC_DUAL_UICC, NFC_NXP_STAT_DUAL_UICC_WO_EXT_SWITCH & NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH,
@@ -764,11 +842,11 @@ void RoutingManager::checkProtoSeID(void)
 
     if (GetNxpNumValue(NAME_CHECK_DEFAULT_PROTO_SE_ID, &check_default_proto_se_id_req, sizeof(check_default_proto_se_id_req)))
     {
-        ALOGD("%s : CHECK_DEFAULT_PROTO_SE_ID - 0x%2lX ",fn,check_default_proto_se_id_req);
+        ALOGD("%s: CHECK_DEFAULT_PROTO_SE_ID - 0x%2lX ",fn,check_default_proto_se_id_req);
     }
     else
     {
-        ALOGE("%s : CHECK_DEFAULT_PROTO_SE_ID not defined. Taking default value - 0x%2lX",fn,check_default_proto_se_id_req);
+        ALOGE("%s: CHECK_DEFAULT_PROTO_SE_ID not defined. Taking default value - 0x%2lX",fn,check_default_proto_se_id_req);
     }
 
     if(check_default_proto_se_id_req == 0x01)
@@ -1056,8 +1134,9 @@ void RoutingManager::compileTechEntries(void)
 {
     static const char fn []          = "RoutingManager::compileTechEntries";
     UINT32 techSupportedBySelectedEE = 0;
+#if(NXP_ESE_FELICA_CLT == TRUE)
     unsigned long num = 0;
-
+#endif
     ALOGD ("%s: enter", fn);
 
     /*Check technologies supported by EE selected in conf file*/
@@ -1097,10 +1176,12 @@ void RoutingManager::compileTechEntries(void)
         mDefaultTechFSeID = ( (num == 0x01) ? ROUTE_LOC_ESE_ID : ((num == 0x02) ? ROUTE_LOC_UICC1_ID : ROUTE_LOC_UICC2_ID) );
 #endif
     }
+#if(NFC_NXP_STAT_DUAL_UICC_WO_EXT_SWITCH == TRUE)
     else
     {
         mDefaultTechFSeID = getUiccRoute(sCurrentSelectedUICCSlot);
     }
+#endif
 #else
     mDefaultTechFSeID = ROUTE_LOC_UICC1_ID;
 #endif
@@ -1409,8 +1490,7 @@ bool RoutingManager::setRoutingEntry(int type, int value, int route, int power)
     UINT8 screen_lock_mask = 0x00;
     UINT8 screen_off_mask = 0x00;
     UINT8 protocol_mask = 0x00;
-    tNFA_HANDLE uicc_handle = NFA_HANDLE_INVALID;
-    tNFA_HANDLE ese_handle = NFA_HANDLE_INVALID;
+
     ee_handle = (( route == 0x01)? 0x4C0 : (( route == 0x02)? 0x402 : NFA_HANDLE_INVALID));
     if(0x00 == route)
     {
@@ -1530,19 +1610,15 @@ bool RoutingManager::setRoutingEntry(int type, int value, int route, int power)
             protocol_mask = NFA_PROTOCOL_MASK_ISO_DEP;
         if( value == 0x02)
             protocol_mask = NFA_PROTOCOL_MASK_NFC_DEP;
+        if( value == 0x04)
+            protocol_mask = NFA_PROTOCOL_MASK_T3T;
+
         switch_on_mask     = (power & 0x01) ? protocol_mask : 0;
         switch_off_mask    = (power & 0x02) ? protocol_mask : 0;
         battery_off_mask   = (power & 0x04) ? protocol_mask : 0;
         screen_lock_mask   = (power & 0x10) ? protocol_mask : 0;
         screen_off_mask    = (power & 0x08) ? protocol_mask : 0;
-        nfaStat = NFA_EeSetDefaultProtoRouting (ee_handle,switch_on_mask , switch_off_mask, battery_off_mask, screen_lock_mask, screen_off_mask);
-        if(nfaStat == NFA_STATUS_OK){
-            mRoutingEvent.wait ();
-            ALOGD ("tech routing SUCCESS");
-        }
-        else{
-            ALOGE ("Fail to set default tech routing");
-        }
+        registerProtoRouteEntry(ee_handle, switch_on_mask, switch_off_mask, battery_off_mask, screen_lock_mask, screen_off_mask);
     }
 
     if ((GetNumValue(NAME_UICC_LISTEN_TECH_MASK, &uiccListenTech, sizeof(uiccListenTech))))
@@ -1581,6 +1657,8 @@ bool RoutingManager::clearRoutingEntry(int type)
     ALOGD ("%s: enter, type:0x%x", fn, type );
     tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
     //tNFA_HANDLE ee_handle = NFA_HANDLE_INVLAID;
+
+    memset(&gRouteInfo, 0x00, sizeof(RouteInfo_t));
     SyncEventGuard guard (mRoutingEvent);
     if(NFA_SET_TECHNOLOGY_ROUTING & type)
     {
@@ -1676,7 +1754,7 @@ bool RoutingManager::addAidRouting(const UINT8* aid, UINT8 aidLen, int route)
 #if(NXP_EXTNS == TRUE)
     tNFA_HANDLE handle;
     tNFA_HANDLE current_handle;
-    unsigned long num = 0;
+
     ALOGD ("%s: enter, route:%x power:0x%x isprefix:%x", fn, route, power, isprefix);
     handle = SecureElement::getInstance().getEseHandleFromGenericId(route);
     ALOGD ("%s: enter, route:%x", fn, handle);
@@ -1971,14 +2049,18 @@ void RoutingManager::notifyLmrtFull ()
         ALOGE ("fail notify");
     }
 }
-
+#if((NXP_EXTNS == TRUE) && (NXP_NFCC_EMPTY_DATA_PACKET == TRUE))
 void RoutingManager::nfcFRspTimerCb(union sigval)
 {
     static const char fn[] = "RoutingManager::nfcFRspTimerCb";
     ALOGD("%s; enter", fn);
-    android::nfcManager_sendEmptyDataMsg();
-
+    if(android::gIsEmptyRspSentByHceFApk)
+        android::gIsEmptyRspSentByHceFApk = FALSE;
+    else
+        android::nfcManager_sendEmptyDataMsg();
+    ALOGD("%s; exit", fn);
 }
+#endif
 
 void RoutingManager::handleData (UINT8 technology, const UINT8* data, UINT32 dataLen, tNFA_STATUS status)
 {
@@ -1997,6 +2079,7 @@ void RoutingManager::handleData (UINT8 technology, const UINT8* data, UINT32 dat
         if (dataLen > 0)
         {
             mRxDataBuffer.insert (mRxDataBuffer.end(), &data[0], &data[dataLen]); //append data
+#if((NXP_EXTNS == TRUE) && (NXP_NFCC_EMPTY_DATA_PACKET == TRUE))
             if (technology == NFA_TECHNOLOGY_MASK_F)
             {
                 bool ret = false;
@@ -2004,6 +2087,7 @@ void RoutingManager::handleData (UINT8 technology, const UINT8* data, UINT32 dat
                 if(!ret)
                     ALOGD("%s; rsp timer create failed", __FUNCTION__);
             }
+#endif
         }
         //entire data packet has been received; no more NFA_CE_DATA_EVT
     }
@@ -2055,7 +2139,10 @@ void RoutingManager::stackCallback (UINT8 event, tNFA_CONN_EVT_DATA* eventData)
     static const char fn [] = "RoutingManager::stackCallback";
     ALOGD("%s: event=0x%X", fn, event);
     RoutingManager& routingManager = RoutingManager::getInstance();
+
+#if((NFC_NXP_ESE == TRUE)&&(NXP_NFCC_ESE_UICC_CONCURRENT_ACCESS_PROTECTION == TRUE))
     SecureElement& se = SecureElement::getInstance();
+#endif
 
     switch (event)
     {
@@ -2141,7 +2228,7 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
 
     SecureElement& se = SecureElement::getInstance();
     RoutingManager& routingManager = RoutingManager::getInstance();
-    tNFA_EE_DISCOVER_REQ info = eventData->discover_req;
+    tNFA_EE_DISCOVER_REQ info;
 
     switch (event)
     {
@@ -2238,7 +2325,7 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
             else
                 ALOGE ("%s: NFA_EE_ACTION_EVT; h=0x%X; unknown trigger (0x%X)", fn, action.ee_handle, action.trigger);
 #if ((NXP_EXTNS == TRUE) && (NFC_NXP_ESE == TRUE))
-            if((action.ee_handle == 0x4C0))
+            if(action.ee_handle == 0x4C0)
             {
                 ALOGE ("%s: NFA_EE_ACTION_EVT; h=0x%X;DWP CL activated (0x%X)", fn, action.ee_handle, action.trigger);
                 se.setCLState(true);
@@ -2296,8 +2383,8 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
             }
 #endif
             /*gSeDiscoverycount++ incremented for new NFCEE discovery;*/
-            SecureElement::getInstance().updateNfceeDiscoverInfo(num_ee, (tNFA_EE_INFO*)&(ee_disc_info.ee_info));
-            ALOGD(" gSeDiscoverycount = %d gActualSeCount=%d", gSeDiscoverycount,gActualSeCount);
+            SecureElement::getInstance().updateNfceeDiscoverInfo();
+            ALOGD(" gSeDiscoverycount = %ld gActualSeCount=%ld", gSeDiscoverycount,gActualSeCount);
             if(gSeDiscoverycount >= gActualSeCount)
             {
                 SyncEventGuard g (gNfceeDiscCbEvent);
@@ -2310,6 +2397,7 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
         break;
 
     case NFA_EE_DISCOVER_REQ_EVT:
+        info = eventData->discover_req;
         ALOGD ("%s: NFA_EE_DISCOVER_REQ_EVT; status=0x%X; num ee=%u", __FUNCTION__,
                 eventData->discover_req.status, eventData->discover_req.num_ee);
 #if((NFC_NXP_ESE == TRUE) && (NXP_EXTNS == TRUE) && (NXP_ESE_ETSI_READER_ENABLE == TRUE))
@@ -2337,7 +2425,8 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
             ALOGD("%s, swp_rd_state=%x", fn, swp_rdr_req_ntf_info.swp_rd_state);
             if( (info.ee_disc_info[xx].ee_req_op == NFC_EE_DISC_OP_ADD) &&
                     (swp_rdr_req_ntf_info.swp_rd_state == STATE_SE_RDR_MODE_STOPPED ||
-                    swp_rdr_req_ntf_info.swp_rd_state == STATE_SE_RDR_MODE_START_CONFIG)&&
+                    swp_rdr_req_ntf_info.swp_rd_state == STATE_SE_RDR_MODE_START_CONFIG ||
+                    swp_rdr_req_ntf_info.swp_rd_state == STATE_SE_RDR_MODE_STOP_CONFIG)&&
                     (info.ee_disc_info[xx].pa_protocol ==  0x04 || info.ee_disc_info[xx].pb_protocol == 0x04 ))
             {
                 ALOGD ("%s NFA_RD_SWP_READER_REQUESTED  EE[%u] Handle: 0x%04x  PA: 0x%02x  PB: 0x%02x",
@@ -2370,9 +2459,20 @@ void RoutingManager::nfaEeCallback (tNFA_EE_EVT event, tNFA_EE_CBACK_DATA* event
                 if(swp_rdr_req_ntf_info.swp_rd_req_info.reCfg)
                 {
                     ALOGD("%s, swp_rd_state=%x  evt : NFA_RD_SWP_READER_REQUESTED swp_rd_req_timer start", fn, swp_rdr_req_ntf_info.swp_rd_state);
-                    swp_rdr_req_ntf_info.swp_rd_state = STATE_SE_RDR_MODE_START_CONFIG;
+
                     swp_rd_req_timer.kill();
-                    swp_rd_req_timer.set (rdr_req_handling_timeout, reader_req_event_ntf);
+                    if(swp_rdr_req_ntf_info.swp_rd_state != STATE_SE_RDR_MODE_STOP_CONFIG)
+                    {
+                        swp_rd_req_timer.set (rdr_req_handling_timeout, reader_req_event_ntf);
+                        swp_rdr_req_ntf_info.swp_rd_state = STATE_SE_RDR_MODE_START_CONFIG;
+                    }
+                    /*RestartReadermode procedure special case should not de-activate*/
+                    else if(swp_rdr_req_ntf_info.swp_rd_state == STATE_SE_RDR_MODE_STOP_CONFIG)
+                    {
+                        swp_rdr_req_ntf_info.swp_rd_state = STATE_SE_RDR_MODE_STARTED;
+                        /*RFDEACTIVATE_DISCOVERY*/
+                        NFA_Deactivate(false);
+                    }
                     swp_rdr_req_ntf_info.swp_rd_req_info.reCfg = false;
                 }
                 //Reader over SWP - Reader Requested.
@@ -2533,7 +2633,7 @@ int RoutingManager::registerT3tIdentifier(UINT8* t3tId, UINT8 t3tIdLen)
     }
 
 #if(NXP_EXTNS == TRUE && NXP_NFCC_HCE_F == TRUE)
-    if (android::nfcManager_getTransanctionRequest(NULL, true))
+    if (android::nfcManager_getTransanctionRequest(0, true))
     {
         ALOGD ("%s: Busy in nfcManager_getTransanctionRequest", fn);
         return NFA_HANDLE_INVALID;
@@ -2612,7 +2712,10 @@ void RoutingManager::nfcFCeCallback (UINT8 event, tNFA_CONN_EVT_DATA* eventData)
 {
     static const char fn [] = "RoutingManager::nfcFCeCallback";
     RoutingManager& routingManager = RoutingManager::getInstance();
+
+#if ((NXP_EXTNS == TRUE) && (NFC_NXP_ESE == TRUE)) && (NXP_ESE_DUAL_MODE_PRIO_SCHEME != NXP_ESE_WIRED_MODE_RESUME)
     SecureElement& se = SecureElement::getInstance();
+#endif
 
     ALOGD("%s: 0x%x", __FUNCTION__, event);
 
@@ -2923,7 +3026,7 @@ void RoutingManager::nfaEEConnect()
     {
         SyncEventGuard g (gNfceeDiscCbEvent);
         ALOGD("%s: Sem wait for gNfceeDiscCbEvent", __FUNCTION__);
-        gNfceeDiscCbEvent.wait (5000);
+        gNfceeDiscCbEvent.wait (gdisc_timeout);
     }
 }
 /*******************************************************************************
