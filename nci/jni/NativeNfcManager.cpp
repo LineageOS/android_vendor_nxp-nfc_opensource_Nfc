@@ -6048,7 +6048,7 @@ bool update_transaction_stat(const char * req_handle, transaction_state_t req_st
              *Also timer should not be started for below handles as these may take
              *more time to reset depending on the transaction duration
              **/
-            if(strcmp(req_handle,"NFA_ACTIVATED_EVT") &&
+            if((req_handle != NULL) && strcmp(req_handle,"NFA_ACTIVATED_EVT") &&
                     strcmp(req_handle,"NFA_EE_ACTION_EVT") &&
                     strcmp(req_handle,"NFA_TRANS_CE_ACTIVATED") &&
                     strcmp(req_handle,"RF_FIELD_EVT") )
