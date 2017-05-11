@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.ArrayList;
+import android.app.ActivityManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -48,7 +49,6 @@ import android.util.Log;
 
 import com.android.nfc.NfcPermissions;
 import com.android.nfc.NfcService;
-import com.android.nfc.cardemulation.Nfcid2RoutingManager;
 import com.android.nfc.cardemulation.RegisteredServicesCache;
 import com.gsma.nfc.internal.RegisteredNxpServicesCache;
 import com.android.nfc.cardemulation.RegisteredNfcFServicesCache;
@@ -79,7 +79,6 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
 
     final RegisteredAidCache mAidCache;
     final RegisteredT3tIdentifiersCache mT3tIdentifiersCache;
-    final RegisteredNfcid2Cache mNfcid2Cache;
     final RegisteredServicesCache mServiceCache;
     final RegisteredNfcFServicesCache mNfcFServicesCache;
     final HostEmulationManager mHostEmulationManager;
@@ -92,7 +91,7 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
     final NfcFCardEmulationInterface mNfcFCardEmulationInterface;
     final PowerManager mPowerManager;
 
-    public CardEmulationManager(Context context, AidRoutingManager aidRoutingManager, Nfcid2RoutingManager nfcid2RoutingManager) {
+    public CardEmulationManager(Context context, AidRoutingManager aidRoutingManager) {
         mContext = context;
         mCardEmulationInterface = new CardEmulationInterface();
         mNfcFCardEmulationInterface = new NfcFCardEmulationInterface();
@@ -100,8 +99,7 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
         mT3tIdentifiersCache = new RegisteredT3tIdentifiersCache(context);
         mServiceCache = new RegisteredServicesCache(context, this);
         mNfcFServicesCache = new RegisteredNfcFServicesCache(context, this);
-        mNfcid2Cache = new RegisteredNfcid2Cache(context, nfcid2RoutingManager, mServiceCache);
-        mHostEmulationManager = new HostEmulationManager(context, mAidCache, mNfcid2Cache);
+        mHostEmulationManager = new HostEmulationManager(context, mAidCache);
         mHostNfcFEmulationManager = new HostNfcFEmulationManager(context, mT3tIdentifiersCache);
         mPreferredServices = new PreferredServices(context, mServiceCache, mAidCache, this);
         mRegisteredNxpServicesCache = new RegisteredNxpServicesCache(context, mServiceCache);
@@ -197,7 +195,6 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
     public void onNfcEnabled() {
         // for HCE
         mAidCache.onNfcEnabled();
-        mNfcid2Cache.onNfcEnabled();
         // for HCE-F
         mT3tIdentifiersCache.onNfcEnabled();
     }
@@ -205,7 +202,6 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
     public void onNfcDisabled() {
         // for HCE
         mAidCache.onNfcDisabled();
-        mNfcid2Cache.onNfcDisabled();
         // for HCE-F
         mHostNfcFEmulationManager.onNfcDisabled();
         mNfcFServicesCache.onNfcDisabled();
@@ -232,8 +228,6 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
         mAidCache.onServicesUpdated(userId, services);
         // Update the preferred services list
         mPreferredServices.onServicesUpdated();
-
-        mNfcid2Cache.onServicesUpdated(userId, services);
     }
 
     @Override
@@ -440,7 +434,6 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
                 throws RemoteException {
             NfcPermissions.validateUserId(userId);
             NfcPermissions.enforceAdminPermissions(mContext);
-            mNfcid2Cache.setDefaultForNextTap(userId, service);
             if (service != null && !isServiceRegistered(userId, service)) {
                 return false;
             }
@@ -677,6 +670,11 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
         }
         //Add dynamic non-payment services
         return nonPaymentServiceAidCacheSize;
+    }
+
+    public List<NQApduServiceInfo> getAllServices() {
+        int userId = ActivityManager.getCurrentUser();
+        return mServiceCache.getServices(userId);
     }
 
     public int updateServiceState(int userId ,
