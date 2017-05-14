@@ -61,6 +61,7 @@ NfcTag::NfcTag ()
     mEzLinkTypeTag(false),
 #if(NXP_EXTNS == TRUE)
     mWaitingForSelect(false),
+    mIsMultiProtocolTag(false),
 #endif
     mTechnologyTimeoutsTable (MAX_NUM_TECHNOLOGY),
     mNativeData (NULL),
@@ -1280,6 +1281,7 @@ bool NfcTag::isP2pDiscovered ()
 *******************************************************************************/
 void NfcTag::storeActivationParams()
 {
+
     mActivationParams_t.mTechParams = mTechParams[0].mode;
     mActivationParams_t.mTechLibNfcTypes = mTechLibNfcTypes [0];
 }
