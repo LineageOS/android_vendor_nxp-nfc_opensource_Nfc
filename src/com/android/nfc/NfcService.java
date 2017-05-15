@@ -1807,6 +1807,7 @@ public class NfcService implements DeviceHostListener {
 
             if (pkg.equals(PACKAGE_SMART_CARD_SERVICE)){
                 Log.d(TAG, "wildcard for SmartcardService");
+                NfcService.this.enforceNfceeAdminPerm(pkg);
                 return mExtrasService;
             }
 
