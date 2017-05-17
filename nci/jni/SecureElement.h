@@ -56,12 +56,17 @@ extern "C"
 #if(NXP_EXTNS == TRUE)
 #define CONNECTIVITY_PIPE_ID_UICC1 0x0A
 #define CONNECTIVITY_PIPE_ID_UICC2 0x23
+
 #if(NFC_NXP_ESE == TRUE)
 #define SIG_NFC 44
 #define HOST_TYPE_ESE   0xC0
 #endif
 #define HOST_TYPE_UICC1 0x02
 #define HOST_TYPE_UICC2 0x81
+typedef enum {
+    RESET_TRANSACTION_STATE,
+    SET_TRANSACTION_STATE
+}transaction_state_t;
 #endif
 
 typedef enum dual_mode{
@@ -204,11 +209,12 @@ public:
     };
     mNfceeData  mNfceeData_t;
     UINT8       mHostsPresent;
-    UINT8   mETSI12InitStatus;
+    UINT8       mETSI12InitStatus;
     UINT8       mHostsId[MAX_NFCEE];
     UINT8       eSE_Compliancy;
     UINT8       mCreatedPipe;
     UINT8       mDeletePipeHostId;
+    bool        meseETSI12Recovery;
     SyncEvent   mCreatePipeEvent;
     SyncEvent   mPipeOpenedEvent;
     SyncEvent   mAbortEvent;
@@ -759,7 +765,7 @@ public:
     ** Returns:         Count of NFCEE discovered.
     **
     *******************************************************************************/
-    UINT8 updateNfceeDiscoverInfo(int numEe, tNFA_EE_INFO* mEeInfo);
+    UINT8 updateNfceeDiscoverInfo();
     tNFA_HANDLE getHciHandleInfo();
     SyncEvent       mNfceeInitCbEvent;
     tNFA_STATUS SecElem_EeModeSet(uint16_t handle, uint8_t mode);
