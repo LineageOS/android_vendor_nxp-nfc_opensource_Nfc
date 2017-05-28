@@ -51,7 +51,7 @@ typedef struct nxp_feature_data
 }Nxp_Feature_Data_t;
 
 extern INT32 gActualSeCount;
-extern uint8_t swp_getconfig_status;
+uint8_t swp_getconfig_status;
 #if((NXP_EXTNS == TRUE) && (NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE))
 extern UINT8 sSelectedUicc;
 #endif
@@ -373,7 +373,6 @@ tNFA_STATUS SendAutonomousMode(jint state ,uint8_t num)
 
 
     ALOGD("%s: enter", __FUNCTION__);
-
     SetCbStatus(NFA_STATUS_FAILED);
     SyncEventGuard guard (gnxpfeature_conf.NxpFeatureConfigEvt);
     if(state == NFA_SCREEN_STATE_OFF )
@@ -623,10 +622,10 @@ tNFA_STATUS GetNumNFCEEConfigured(void)
     gActualSeCount = 1; /* default ese present */
     uint8_t cmd_buf[255] = {0x20, 0x03, 0x05, 0x02, NXP_NFC_SET_CONFIG_PARAM_EXT, NXP_NFC_PARAM_ID_SWP1, NXP_NFC_SET_CONFIG_PARAM_EXT, NXP_NFC_PARAM_ID_SWP2};
     uint8_t cmd_buf_len = 0x08;
-    uint8_t buf_offset = 0x08;
     uint8_t num_config_params = 0x02;
     uint8_t config_param_len = 0x05;
 #if(NXP_NFCC_DYNAMIC_DUAL_UICC == TRUE)
+    uint8_t buf_offset = 0x08;
     cmd_buf[buf_offset++] = NXP_NFC_SET_CONFIG_PARAM_EXT;
     cmd_buf[buf_offset++] = NXP_NFC_PARAM_ID_SWP1A;
     cmd_buf_len += 0x02;
@@ -715,7 +714,7 @@ tNFA_STATUS SetHfoConfigValue(void)
 }
 #endif
 
-#if (JCOP_WA_ENABLE == TRUE)
+
 /*******************************************************************************
  **
  ** Function:        ResetEseSession
@@ -747,15 +746,11 @@ tNFA_STATUS ResetEseSession()
         }
     }
     status = GetCbStatus();
-    if (NFA_STATUS_OK == status)
-    {
-        ALOGD ("%s: ResetEseSession identity is Success", __FUNCTION__);
-        status = NxpNfc_Send_CoreResetInit_Cmd();
-    }
+
     ALOGD("%s: exit", __FUNCTION__);
     return status;
 }
-#endif
+
 
 /*******************************************************************************
  **
@@ -770,10 +765,14 @@ tNFA_STATUS enableSWPInterface()
 {
     tNFA_STATUS status = NFA_STATUS_FAILED;
     static uint8_t get_eeprom_data[6] = {0x20, 0x03,  0x03 , 0x01 ,0xA0, 0x14};
+#if (NFC_NXP_STAT_DUAL_UICC_WO_EXT_SWITCH == TRUE)
     uint8_t cmd_buf[] = { 0x20, 0x02, 0x09, 0x02,
-                                 0xA0, 0xEC, 0x01, 0x00
-                                 ,0xA0, 0xD4, 0x01, 0x00};
-
+                          0xA0, 0xEC, 0x01, 0x00,
+                          0xA0, 0xD4, 0x01, 0x00 };
+#else
+    uint8_t cmd_buf[] = { 0x20, 0x02, 0x05, 0x01,
+                          0xA0, 0xEC, 0x01, 0x00 };
+#endif
     ALOGD("%s: enter", __FUNCTION__);
 
     status = NxpNfc_Write_Cmd(sizeof(get_eeprom_data), get_eeprom_data, NxpResponse_Cb);
@@ -783,12 +782,18 @@ tNFA_STATUS enableSWPInterface()
         {
             cmd_buf[7] = 0x01;
         }
+#if (NFC_NXP_STAT_DUAL_UICC_WO_EXT_SWITCH == TRUE)
         if(gnxpfeature_conf.rsp_data[9] == 0x01 && !(swp_getconfig_status & SWP1A_UICC2) ) //SWP1A status read
         {
             cmd_buf[11] = 0x01;
         }
-
-        if(cmd_buf[7] == 0x00 &&  cmd_buf[11] == 0x00)
+#endif
+        if(cmd_buf[7] == 0x00
+#if (NFC_NXP_STAT_DUAL_UICC_WO_EXT_SWITCH == TRUE)
+            &&  cmd_buf[11] == 0x00)
+#else
+    )
+#endif
         {
             ALOGD ("%s: No mismatch in UICC SWP and configuration set", __FUNCTION__);
             status = NFA_STATUS_FAILED;
@@ -810,13 +815,14 @@ tNFA_STATUS enableSWPInterface()
                 }
             }
             status = GetCbStatus();
+            if (NFA_STATUS_OK == status)
+            {
+                ALOGD ("%s: Enable interface SWP1 & SWP1A is Success", __FUNCTION__);
+                status = NxpNfc_Send_CoreResetInit_Cmd();
+            }
         }
     }
-    if (NFA_STATUS_OK == status)
-    {
-        ALOGD ("%s: Enable interface SWP1 & SWP1A is Success", __FUNCTION__);
-        status = NxpNfc_Send_CoreResetInit_Cmd();
-    }
+
     ALOGD("%s: exit", __FUNCTION__);
     return status;
 }
@@ -942,7 +948,7 @@ tNFA_STATUS Set_EERegisterValue(UINT16 RegAddr, uint8_t bitVal)
 }
 
 #endif
-#if((NXP_EXTNS == TRUE) && (NFC_NXP_STAT_DUAL_UICC_EXT_SWITCH == TRUE))
+#if(NXP_EXTNS == TRUE)
 /*******************************************************************************
 + **
 + ** Function:        NxpNfc_Write_Cmd()
