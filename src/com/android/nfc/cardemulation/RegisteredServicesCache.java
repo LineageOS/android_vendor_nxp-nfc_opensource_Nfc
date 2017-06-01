@@ -92,6 +92,11 @@ public class RegisteredServicesCache {
     final AtomicFile mServiceStateFile;
     //public ArrayList<NQApduServiceInfo> mAllServices = new ArrayList<NQApduServiceInfo>();
     final HashMap<ComponentName, NQApduServiceInfo> mAllServices = Maps.newHashMap();
+    /*Installed service will be used to load all the registered services available in the device
+     *key   : UID corresponding to the service - owner of the service
+     *value : Hashmap of service component and corresponding state
+     * */
+    HashMap<String, HashMap<ComponentName, Integer>> installedServices = new HashMap<>();
 
     private RegisteredNxpServicesCache mRegisteredNxpServicesCache;
 
@@ -553,6 +558,24 @@ public class RegisteredServicesCache {
                                         if(state<NxpConstants.SERVICE_STATE_DISABLED || state > NxpConstants.SERVICE_STATE_DISABLING)
                                             Log.e(TAG, "Invalid Service state");
                                     }
+                                    /*Load all the servies info into local memory from xml file and
+                                     *later update the xml file with updated information
+                                     *This way it can retain previous user's information even after switching to different user
+                                     * */
+                                    if(installedServices.containsKey(uidString))
+                                    {
+                                        Log.e(TAG, "installedServices contains uidString : " +uidString);
+                                        HashMap<ComponentName, Integer> componentStates;
+                                        componentStates = installedServices.get(uidString);
+                                                componentStates.put(currComponent,state);
+                                    }else
+                                    {
+                                        Log.e(TAG, "installedServices no uidString ");
+                                        HashMap<ComponentName, Integer> componentStates = new HashMap<>();
+                                        componentStates.put(currComponent,state);
+                                        installedServices.put(uidString,componentStates);
+                                    }
+
                                 } catch (NumberFormatException e) {
                                     Log.e(TAG, "could not parse the service attributes");
                                 }
@@ -561,7 +584,7 @@ public class RegisteredServicesCache {
                      } else  if (eventType == XmlPullParser.END_TAG) {
                          if("service".equals(tagName)) {
                              final int userId = UserHandle.getUserId(currUid);
-                             if(currUserId == userId) {
+
                                  UserServices serviceCache = findOrCreateUserLocked(userId);
                                  NQApduServiceInfo serviceInfo = serviceCache.services.get(currComponent);
                                  if(serviceInfo == null) {
@@ -571,7 +594,6 @@ public class RegisteredServicesCache {
                                          Log.e(TAG, "could not find the required serviceInfo");
                                      } else serviceInfo.setServiceState(CardEmulation.CATEGORY_OTHER ,state);
                                  } else   serviceInfo.setServiceState(CardEmulation.CATEGORY_OTHER ,state);
-                             }
                          }
                          currUid       = -1;
                          currComponent = null;
@@ -583,7 +605,7 @@ public class RegisteredServicesCache {
              }
         } catch(Exception e) {
             mServiceStateFile.delete();
-            Log.e(TAG, "could not parse the seriveState file , thrashing the file");
+            Log.e(TAG, "could not parse the seriveState file , thrashing the file " + e);
         } finally {
             try {
                 if(fis != null) {
@@ -605,6 +627,7 @@ public class RegisteredServicesCache {
         if(currUserId != ActivityManager.getCurrentUser()) {
             return false;
         }
+        int state = NxpConstants.SERVICE_STATE_ENABLED;
         try {
             fos = mServiceStateFile.startWrite();
             XmlSerializer out = new FastXmlSerializer();
@@ -625,9 +648,24 @@ public class RegisteredServicesCache {
                     out.attribute(null, "component", serviceInfo.getComponent().flattenToString());
                     Log.e(TAG,"component name"+ serviceInfo.getComponent().flattenToString());
                     out.attribute(null, "uid", Integer.toString(serviceInfo.getUid()));
-                    Log.e(TAG,"uid name"+ Integer.toString(serviceInfo.getUid()));
-                    out.attribute(null, "serviceState", Integer.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
-                    Log.e(TAG,"service State:"+ Integer.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
+
+                    boolean isServiceInstalled = false;
+                    if(installedServices.containsKey(Integer.toString(serviceInfo.getUid()))){
+                        HashMap<ComponentName, Integer> componentStates = installedServices.get(Integer.toString(serviceInfo.getUid()));
+                        if (componentStates.containsKey(serviceInfo.getComponent())) {
+                            state = componentStates.get(serviceInfo.getComponent());
+                            componentStates.remove(serviceInfo.getComponent());
+                            if(componentStates.isEmpty())
+                            {
+                                installedServices.remove(Integer.toString(serviceInfo.getUid()));
+                            }
+                            isServiceInstalled = true;
+                        }
+                    }
+                    if (!isServiceInstalled) {
+                        state = serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER);
+                    }
+                    out.attribute(null, "serviceState", Integer.toString(state));
                     out.endTag(null, "service");
                 }
             }
@@ -639,8 +677,25 @@ public class RegisteredServicesCache {
                 Log.d(TAG,"component name"+ serviceInfo.getComponent().flattenToString());
                 out.attribute(null, "uid", Integer.toString(serviceInfo.getUid()));
                 Log.d(TAG,"uid name"+ Integer.toString(serviceInfo.getUid()));
-                out.attribute(null, "serviceState", Integer.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
-                Log.d(TAG,"service State:"+ Integer.toString(serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER)));
+
+                boolean isServiceInstalled = false;
+                if(installedServices.containsKey(Integer.toString(serviceInfo.getUid()))){
+                    HashMap<ComponentName, Integer> componentStates = installedServices.get(Integer.toString(serviceInfo.getUid()));
+                    if (componentStates.containsKey(serviceInfo.getComponent())) {
+                        state = componentStates.get(serviceInfo.getComponent());
+                        componentStates.remove(serviceInfo.getComponent());
+                        if(componentStates.isEmpty())
+                        {
+                            installedServices.remove(Integer.toString(serviceInfo.getUid()));
+                        }
+                        isServiceInstalled = true;
+                    }
+                }
+                if (!isServiceInstalled) {
+                    state = serviceInfo.getServiceState(CardEmulation.CATEGORY_OTHER);
+                }
+                out.attribute(null, "serviceState", Integer.toString(state));
+                Log.d(TAG,"service State:"+ Integer.toString(state));
                 out.endTag(null, "service");
             }
             out.endTag(null ,"services");
